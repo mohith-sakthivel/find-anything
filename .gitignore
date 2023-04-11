@@ -1,0 +1,6 @@
+data/
+docs/
+logs/
+models/
+
+__pycache__
