@@ -166,7 +166,6 @@ class FindAnythingDataset(Dataset):
                 if obj_class == target_class and idx == num_objects - 1:
                     support_pcd = mesh.sample_points_poisson_disk(number_of_points=self.points_per_object, init_factor=5)
 
-
         # Move objects into a grid-like pattern
         num_rows = int(np.sqrt(len(objects_list) - 1))
         num_cols = int((np.ceil(len(objects_list) - 1) / num_rows))
@@ -175,7 +174,6 @@ class FindAnythingDataset(Dataset):
         # Move the objects into a grid-like pattern with randomly sampled ordering for translation
         ordering = np.arange(0, len(objects_list) + 1)
         np.random.shuffle(ordering[1:])
-        print(ordering)
         for i, obj in enumerate(objects_list):
             if i == 0:
                 continue
