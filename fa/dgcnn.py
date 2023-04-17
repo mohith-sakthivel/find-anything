@@ -80,7 +80,7 @@ def build_conv_block_1d(in_dim, out_dim):
 
 class DGCNNSeg(nn.Module):
 
-    def __init__(self, k: int, embed_dim: int = 1024, dropout: float = 0.5, num_classes: Optional[int] = None, feat_dim: int = 256) -> None:
+    def __init__(self, k: int = 20, embed_dim: int = 1024, dropout: float = 0.5, num_classes: Optional[int] = None, feat_dim: int = 256) -> None:
         
         super().__init__()
 
@@ -104,7 +104,7 @@ class DGCNNSeg(nn.Module):
 
         if num_classes is not None:
             self.dp = nn.Dropout(p=dropout)
-            self.conv9 = nn.Conv1d(256, num_classes)
+            self.conv9 = nn.Conv1d(256, num_classes, 1)
 
     def forward(self, x):
         b, _, n_pts = x.size()

@@ -1,5 +1,6 @@
 import tqdm
 import random
+import datetime
 import argparse
 import numpy as np
 from typing import Dict
@@ -28,14 +29,34 @@ config.lr = 1e-3
 config.eval_samples = 2000
 config.log_freq = 20  # Iters to log after
 config.save_freq = 5  # Epochs to save after. Set None to not save.
+config.use_pretrained_dgcnn = 'scannet'
+config.use_checkpoint = None
 
 
 def train_model(config: Dict) -> None:
+
+    seed_everything(config.seed)
+    if config.use_checkpoint is None:
+        run_id = config.expname + datetime.datetime.now().strftime("%Y-%m-%d--%H-%M-%S")
+    else:
+        run_id = config.use_checkpoint
+
+    wandb_run = wandb.init(
+        project="find-anything",
+        config=config,
+        id=run_id,
+        resume=None if config.use_checkpoint is None else "must"
+    )
 
     train_dataloader = None
     test_dataloader = None
 
     feat_extractor = DGCNNSeg()
+    if config.use_pretrained_dgcnn == "scannet":
+        feat_extractor.load_state_dict(torch.load("pretrained_weights/scannet.pth"))
+    elif config.use_pretrained_dgcnn == "s3dis":
+        feat_extractor.load_state_dict(torch.load("pretrained_weights/s3dis_model_6.pth"))
+
     feat_agg = SimpleAggregator(in_dim=feat_extractor.feat_dim)
     pred_head = DGCNNPredHead(in_dim=feat_agg.out_dim)
 
@@ -108,6 +129,8 @@ def train_model(config: Dict) -> None:
                 scheduler=scheduler,
                 epoch=epoch + 1
             )
+    
+    wandb.finish()
 
 
 if __name__ == "__main__":
@@ -120,11 +143,4 @@ if __name__ == "__main__":
     for k, v in args.items():
         config[k] = v
 
-    wandb_run = wandb.init(
-        project="find-anything",
-        config=config
-    )
-
-
-    seed_everything(config.seed)
     train_model(config)
