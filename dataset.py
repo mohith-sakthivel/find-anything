@@ -3,6 +3,7 @@ import random
 import numpy as np
 import open3d as o3d
 from tqdm import tqdm
+import time
 
 import torch
 from torch.utils.data import Dataset
@@ -41,14 +42,14 @@ class FindAnythingDataset(Dataset):
         self.obj_classes = [obj_class for obj_class in os.listdir(root_dir)]
 
         # Hyperparameters
-        self.min_classes = 3
-        self.max_classes = len(self.obj_classes)
+        self.min_classes = 6
+        self.max_classes = 6
         self.min_object_per_class = 1
-        self.max_object_per_class = 3
-        self.points_per_object = 1000
-        self.points_on_plane = 10000
+        self.max_object_per_class = 1
+        self.point_density_by_area = 10
+        self.points_on_plane = 300
         self.object_size_range = [2, 4]
-        self.plane_side_dim = 30
+        self.plane_side_dim = 15
 
         # Create the ground plane to place objects on
         mesh_plane = o3d.geometry.TriangleMesh.create_box(width=self.plane_side_dim,
@@ -71,8 +72,10 @@ class FindAnythingDataset(Dataset):
         self.train_obj_dict = dict()
         self.test_obj_dict = dict()
         for obj_class in self.obj_classes:
-            self.train_obj_dict[obj_class] = [obj for obj in os.listdir(os.path.join(root_dir, obj_class, "train")) if obj.endswith(".off")]
-            self.test_obj_dict[obj_class] = [obj for obj in os.listdir(os.path.join(root_dir, obj_class, "test")) if obj.endswith(".off")]
+            self.train_obj_dict[obj_class] = [obj for obj in os.listdir(
+                os.path.join(root_dir, obj_class, "train")) if obj.endswith(".off")]
+            self.test_obj_dict[obj_class] = [obj for obj in os.listdir(
+                os.path.join(root_dir, obj_class, "test")) if obj.endswith(".off")]
 
     def __getitem__(self, idx):
         """
@@ -83,6 +86,7 @@ class FindAnythingDataset(Dataset):
             There can be multiple objects of the same type from one class
             Not all classes are guaranteed to be present in the scene
         """
+        cur_time = time.time()
         # Create a list of mesh objects to place in the scene
         objects_list = [self.mesh_pc]
         labels_list = [0] * self.points_on_plane
@@ -94,6 +98,9 @@ class FindAnythingDataset(Dataset):
         # Randomly select the classes to include in the scene
         classes = random.sample(self.obj_classes, num_classes)
 
+        # Randomly sample colors for each class
+        colors = [np.array([[0], [0], [0]])]
+
         # Randomly determine one class to be the target class
         target_class = random.choice(classes)
 
@@ -102,6 +109,9 @@ class FindAnythingDataset(Dataset):
         for i in range(len(classes)):
             num_obj_per_class = random.randint(self.min_object_per_class, self.max_object_per_class)
             num_objects_per_class.append(num_obj_per_class)
+            color = np.random.rand(3,1)
+            for j in range(num_obj_per_class):
+                colors.append(color)
 
         # Loop through each class and add objects to the scene
         for obj_class, num_objects in zip(classes, num_objects_per_class):
@@ -110,12 +120,6 @@ class FindAnythingDataset(Dataset):
                 obj = random.choice(self.train_obj_dict[obj_class])
             else:
                 obj = random.choice(self.test_obj_dict[obj_class])
-
-            # Add class binary label to list number of times equal to num_objects
-            if obj_class == target_class:
-                labels_list.extend([1] * num_objects * self.points_per_object)
-            else:
-                labels_list.extend([0] * num_objects * self.points_per_object)
 
             # Load the object
             mesh = o3d.io.read_triangle_mesh(os.path.join(self.root_dir, obj_class, self.split, obj))
@@ -126,12 +130,23 @@ class FindAnythingDataset(Dataset):
             # Scale the object to be the randomized scaling factor
             mesh.scale(scale / np.max(mesh.get_max_bound() - mesh.get_min_bound()), center=mesh.get_center())
 
+            # Get surface area of the mesh
+            mesh_sa = mesh.get_surface_area()
+            points_to_sample = int(mesh_sa * self.point_density_by_area)
+
+             # Add class binary label to list number of times equal to num_objects
+            if obj_class == target_class:
+                labels_list.extend([1] * num_objects * points_to_sample)
+            else:
+                labels_list.extend([0] * num_objects * points_to_sample)
+
             # Get the bounding box dimensions and center
             bbox = mesh.get_axis_aligned_bounding_box()
             bbox_center = bbox.get_center()
             bbox_dims = bbox.get_max_bound() - bbox.get_min_bound()
 
-            # Move the object so that the bounding box center is above the origin and the bottom of the bounding box is at z=0
+            # Move the object so that the bounding box center is above the origin and the 
+            # bottom of the bounding box is at z=0
             mesh.translate(-bbox_center)
             mesh.translate([0, 0, bbox_dims[2] / 2])
 
@@ -139,7 +154,8 @@ class FindAnythingDataset(Dataset):
             for idx in range(num_objects):
                 # Sample points from the mesh
                 mesh.compute_vertex_normals()
-                pcd = mesh.sample_points_poisson_disk(number_of_points=self.points_per_object, init_factor=5)
+                pcd = mesh.sample_points_poisson_disk(number_of_points=points_to_sample, 
+                                                      init_factor=5)
 
                 # Define a random position and orientation for the object - no randomness in position currently
                 z_rot = random.uniform(0, 360)
@@ -158,13 +174,14 @@ class FindAnythingDataset(Dataset):
 
                 # Add object instance label to list number of times equal to num_objects
                 if obj_class == target_class:
-                    instance_labels_list.extend([idx] * self.points_per_object)
+                    instance_labels_list.extend([idx] * points_to_sample)
                 else:
-                    instance_labels_list.extend([-1] * self.points_per_object)
+                    instance_labels_list.extend([-1] * points_to_sample)
 
                 # Add the object to the target list
                 if obj_class == target_class and idx == num_objects - 1:
-                    support_pcd = mesh.sample_points_poisson_disk(number_of_points=self.points_per_object, init_factor=5)
+                    support_pcd = mesh.sample_points_poisson_disk(number_of_points=points_to_sample, 
+                                                                  init_factor=5)
 
         # Move objects into a grid-like pattern
         num_rows = int(np.sqrt(len(objects_list) - 1))
@@ -210,6 +227,9 @@ class FindAnythingDataset(Dataset):
         
         if self.debug_mode is True:
             data["debug_objects_list"] = objects_list
+            data["colors"] = colors
+
+        print(time.time() - cur_time)
 
         return data
     
@@ -231,8 +251,13 @@ if __name__ == "__main__":
     opt.show_coordinate_frame = True
     opt.background_color = np.asarray([1, 1, 1])
 
+    total_num_points = 0
+
     # Render the scene
-    for obj in data['debug_objects_list']:
+    for obj, color in zip(data['debug_objects_list'], data["colors"]):
+        obj.paint_uniform_color(color)
         vis.add_geometry(obj)
+        total_num_points += np.asarray(obj.points).shape[0] 
+    print(total_num_points)
     vis.run()
     vis.destroy_window()
