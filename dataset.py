@@ -73,37 +73,6 @@ class FindAnythingDataset(Dataset):
         for obj_class in self.obj_classes:
             self.train_obj_dict[obj_class] = [obj for obj in os.listdir(os.path.join(root_dir, obj_class, "train")) if obj.endswith(".off")]
             self.test_obj_dict[obj_class] = [obj for obj in os.listdir(os.path.join(root_dir, obj_class, "test")) if obj.endswith(".off")]
-            
-        # Currently not used
-        # Set up unique instance labels for each object, allowing mapping from both directions
-        # self.instance_lookup_dict = dict()
-        # self.class_lookup_dict = dict()
-        # instance_idx = 0
-        # class_idx = 0
-        # for obj_class in self.obj_classes:
-        #     # Create a lookup dictionary for the class
-        #     self.class_lookup_dict[obj_class] = class_idx
-        #     self.class_lookup_dict[class_idx] = obj_class
-
-        #     # First loop through train, saving only the file name (excl. extension)
-        #     for file in os.listdir(os.path.join(root_dir, obj_class, "train")):
-        #         if file.endswith(".off"):
-        #             self.instance_lookup_dict[file[:-4]] = instance_idx
-        #             self.instance_lookup_dict[instance_idx] = file[:-4]
-        #             instance_idx += 1
-
-        #     # Then loop through test
-        #     for file in os.listdir(os.path.join(root_dir, obj_class, "test")):
-        #         if file.endswith(".off"):
-        #             self.instance_lookup_dict[file[:-4]] = instance_idx
-        #             self.instance_lookup_dict[instance_idx] = file[:-4]
-        #             instance_idx += 1
-
-        # Set up inverse_lookup specific for the plane - currently not used
-        # self.instance_lookup_dict[-1] = "plane"
-        # self.instance_lookup_dict["plane"] = -1
-        # self.class_lookup_dict[-1] = "plane"
-        # self.class_lookup_dict["plane"] = -1
 
     def __getitem__(self, idx):
         """
@@ -173,16 +142,12 @@ class FindAnythingDataset(Dataset):
                 pcd = mesh.sample_points_poisson_disk(number_of_points=self.points_per_object, init_factor=5)
 
                 # Define a random position and orientation for the object - no randomness in position currently
-                # x = random.uniform(-self.plane_side_dim/2, self.plane_side_dim/2)
-                # y = random.uniform(-self.plane_side_dim/2, self.plane_side_dim/2)
                 z_rot = random.uniform(0, 360)
-                # position = np.expand_dims(np.array([x, y, 0]), axis=0)
                 rotation = o3d.geometry.get_rotation_matrix_from_xyz([0, 0, z_rot])
 
                 # Create transformation matrix
                 transform = np.zeros((4, 4))
                 transform[:3, :3] = rotation
-                # transform[:3, 3] = position
                 transform[3, 3] = 1
 
                 # Apply transformation to the point cloud
