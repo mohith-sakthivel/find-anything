@@ -34,4 +34,4 @@ class DGCNNPredHead(nn.Module):
         x = self.dp(x)
         x = self.conv3(x)
 
-        return x
+        return x.transpose(-1, -2)

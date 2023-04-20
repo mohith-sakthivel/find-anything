@@ -18,7 +18,7 @@ import torch.nn.functional as F
 from typing import Optional
 
 
-def knn(x, k):
+def knn(x: torch.Tensor, k: int) -> torch.Tensor:
     inner = -2*torch.matmul(x.transpose(2, 1), x)
     xx = torch.sum(x**2, dim=1, keepdim=True)
     pairwise_distance = -xx - inner - xx.transpose(2, 1)
@@ -27,7 +27,7 @@ def knn(x, k):
     return idx
 
 
-def get_graph_feature(x, k=20, idx=None, raw_points=False):
+def get_graph_feature(x: torch.Tensor, k:int = 20, idx: Optional[torch.Tensor] = None, raw_points: bool = False) -> torch.Tensor:
     batch_size = x.size(0)
     num_points = x.size(2)
     x = x.view(batch_size, -1, num_points)
@@ -56,7 +56,7 @@ def get_graph_feature(x, k=20, idx=None, raw_points=False):
     return feature      # (batch_size, 2*num_dims, num_points, k)
 
 
-def build_conv_block_2d(in_dim, out_dim):
+def build_conv_block_2d(in_dim: int, out_dim: int) -> nn.Module:
 
     block = nn.Sequential(
         nn.Conv2d(in_dim, out_dim, kernel_size=1, bias=False),
@@ -67,7 +67,7 @@ def build_conv_block_2d(in_dim, out_dim):
     return block
 
 
-def build_conv_block_1d(in_dim, out_dim):
+def build_conv_block_1d(in_dim: int, out_dim: int) -> nn.Module:
 
     block = nn.Sequential(
         nn.Conv1d(in_dim, out_dim, kernel_size=1, bias=False),
@@ -106,7 +106,7 @@ class DGCNNSeg(nn.Module):
             self.dp = nn.Dropout(p=dropout)
             self.conv9 = nn.Conv1d(256, num_classes, 1)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         b, _, n_pts = x.size()
 
         x = get_graph_feature(x, self.k, raw_points=True)
