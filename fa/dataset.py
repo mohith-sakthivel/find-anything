@@ -82,9 +82,12 @@ class FindAnythingDataset(Dataset):
         Generate a scene from the dataset on top of a ground plane
 
         Notes
-            A maximum of one object type per class is placed on the scene
-            There can be multiple objects of the same type from one class
-            Not all classes are guaranteed to be present in the scene
+            The target class and instance is randomly sampled
+            All negative instances are from the non-target classes, and are randomly sampled
+            Each scene will have:
+                # target instances: num_target_instances
+                # negative instances: num_scene_instances - num_target_instances
+                + 1 plane
         """
         # Create a list of mesh objects to place in the scene
         objects_list = [self.mesh_pc]
