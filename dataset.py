@@ -42,13 +42,13 @@ class FindAnythingDataset(Dataset):
         self.obj_classes = [obj_class for obj_class in os.listdir(root_dir)]
 
         # Hyperparameters
-        self.min_classes = 6
-        self.max_classes = 6
-        self.min_object_per_class = 1
-        self.max_object_per_class = 1
+        self.min_scene_instances = 6
+        self.max_scene_instances = 10
+        self.min_target_instances = 1
+        self.max_target_instances = 3
         self.point_density_by_area = 10
         self.points_on_plane = 300
-        self.object_size_range = [2, 4]
+        self.object_size_range = [2, 3]
         self.plane_side_dim = 15
 
         # Create the ground plane to place objects on
@@ -86,43 +86,105 @@ class FindAnythingDataset(Dataset):
             There can be multiple objects of the same type from one class
             Not all classes are guaranteed to be present in the scene
         """
-        cur_time = time.time()
         # Create a list of mesh objects to place in the scene
         objects_list = [self.mesh_pc]
         labels_list = [0] * self.points_on_plane
         instance_labels_list = [-1] * self.points_on_plane
 
         # Randomly select the number of classes to include in the scene
-        num_classes = random.randint(self.min_classes, self.max_classes)
+        num_scene_instances = random.randint(self.min_scene_instances, self.max_scene_instances)
 
-        # Randomly select the classes to include in the scene
-        classes = random.sample(self.obj_classes, num_classes)
+        # Randomly determine one class to be the target class
+        target_class = random.choice(self.obj_classes)
+
+        # Remove the target class from list for sampling negative instances
+        obj_classes_less_target = self.obj_classes.copy()  # Create a copy of the original list
+        obj_classes_less_target.remove(target_class)  # Remove the item from the new list
 
         # Randomly sample colors for each class
         colors = [np.array([[0], [0], [0]])]
 
-        # Randomly determine one class to be the target class
-        target_class = random.choice(classes)
+        # Randomly select the number of target instances to include in the scene
+        num_target_instances = random.randint(self.min_target_instances, self.max_target_instances)
 
-        # Pre-calculate number of objects per class
-        num_objects_per_class = list()
-        for i in range(len(classes)):
-            num_obj_per_class = random.randint(self.min_object_per_class, self.max_object_per_class)
-            num_objects_per_class.append(num_obj_per_class)
-            color = np.random.rand(3,1)
-            for j in range(num_obj_per_class):
-                colors.append(color)
+        # First sample target instance
+        if self.split == "train":
+            obj = random.choice(self.train_obj_dict[target_class])
+        else:
+            obj = random.choice(self.test_obj_dict[target_class])
 
-        # Loop through each class and add objects to the scene
-        for obj_class, num_objects in zip(classes, num_objects_per_class):
-            # Randomly select an object from the class
+        # Load the object
+        mesh = o3d.io.read_triangle_mesh(os.path.join(self.root_dir, target_class, self.split, obj))
+        
+        # Randomly scale the object
+        scale = random.uniform(self.object_size_range[0], self.object_size_range[1])
+
+        # Scale the object to be the randomized scaling factor
+        mesh.scale(scale / np.max(mesh.get_max_bound() - mesh.get_min_bound()), center=mesh.get_center())
+
+        # Get surface area of the mesh
+        mesh_sa = mesh.get_surface_area()
+        points_to_sample = int(mesh_sa * self.point_density_by_area)
+
+        # Add class binary label to list number of times equal to num_objects
+        labels_list.extend([1] * num_target_instances * points_to_sample)
+
+        # Get the bounding box dimensions and center
+        bbox = mesh.get_axis_aligned_bounding_box()
+        bbox_center = bbox.get_center()
+        bbox_dims = bbox.get_max_bound() - bbox.get_min_bound()
+
+        # Move the object so that the bounding box center is above the origin and the 
+        # bottom of the bounding box is at z=0
+        mesh.translate(-bbox_center)
+        mesh.translate([0, 0, bbox_dims[2] / 2])
+
+        # Target color is yellow
+        color = np.array([[1], [1], [0]])
+
+        # Loop through each object and add it to the scene
+        for idx in range(num_target_instances):
+            # Sample points from the mesh
+            mesh.compute_vertex_normals()
+            pcd = mesh.sample_points_poisson_disk(number_of_points=points_to_sample, 
+                                                    init_factor=5)
+
+            # Define a random position and orientation for the object - no randomness in position currently
+            z_rot = random.uniform(0, 360)
+            rotation = o3d.geometry.get_rotation_matrix_from_xyz([0, 0, z_rot])
+
+            # Create transformation matrix
+            transform = np.zeros((4, 4))
+            transform[:3, :3] = rotation
+            transform[3, 3] = 1
+
+            # Apply transformation to the point cloud
+            pcd = pcd.transform(transform)
+
+            # Add the object to the scene
+            objects_list.append(pcd)
+
+            # Add object instance label to list number of times equal to num_objects
+            instance_labels_list.extend([idx] * points_to_sample)
+
+            # Add the object to the target list
+            if idx == num_target_instances - 1:
+                support_pcd = mesh.sample_points_poisson_disk(number_of_points=points_to_sample, 
+                                                                init_factor=5)
+
+            colors.append(color)
+        
+        # 2. Sample negative instances
+        for idx in range(num_scene_instances - num_target_instances):
+            # Sample negative instance class, then sample object from that class
+            neg_class = random.choice(obj_classes_less_target)
             if self.split == "train":
-                obj = random.choice(self.train_obj_dict[obj_class])
+                obj = random.choice(self.train_obj_dict[neg_class])
             else:
-                obj = random.choice(self.test_obj_dict[obj_class])
+                obj = random.choice(self.test_obj_dict[neg_class])
 
             # Load the object
-            mesh = o3d.io.read_triangle_mesh(os.path.join(self.root_dir, obj_class, self.split, obj))
+            mesh = o3d.io.read_triangle_mesh(os.path.join(self.root_dir, neg_class, self.split, obj))
             
             # Randomly scale the object
             scale = random.uniform(self.object_size_range[0], self.object_size_range[1])
@@ -134,11 +196,8 @@ class FindAnythingDataset(Dataset):
             mesh_sa = mesh.get_surface_area()
             points_to_sample = int(mesh_sa * self.point_density_by_area)
 
-             # Add class binary label to list number of times equal to num_objects
-            if obj_class == target_class:
-                labels_list.extend([1] * num_objects * points_to_sample)
-            else:
-                labels_list.extend([0] * num_objects * points_to_sample)
+            # Add class binary label to list number of times equal to num_objects
+            labels_list.extend([0] * points_to_sample)
 
             # Get the bounding box dimensions and center
             bbox = mesh.get_axis_aligned_bounding_box()
@@ -150,38 +209,31 @@ class FindAnythingDataset(Dataset):
             mesh.translate(-bbox_center)
             mesh.translate([0, 0, bbox_dims[2] / 2])
 
-            # Loop through each object and add it to the scene
-            for idx in range(num_objects):
-                # Sample points from the mesh
-                mesh.compute_vertex_normals()
-                pcd = mesh.sample_points_poisson_disk(number_of_points=points_to_sample, 
-                                                      init_factor=5)
+            # Sample points from the mesh
+            mesh.compute_vertex_normals()
+            pcd = mesh.sample_points_poisson_disk(number_of_points=points_to_sample, 
+                                                    init_factor=5)
 
-                # Define a random position and orientation for the object - no randomness in position currently
-                z_rot = random.uniform(0, 360)
-                rotation = o3d.geometry.get_rotation_matrix_from_xyz([0, 0, z_rot])
+            # Define a random position and orientation for the object - no randomness in position currently
+            z_rot = random.uniform(0, 360)
+            rotation = o3d.geometry.get_rotation_matrix_from_xyz([0, 0, z_rot])
 
-                # Create transformation matrix
-                transform = np.zeros((4, 4))
-                transform[:3, :3] = rotation
-                transform[3, 3] = 1
+            # Create transformation matrix
+            transform = np.zeros((4, 4))
+            transform[:3, :3] = rotation
+            transform[3, 3] = 1
 
-                # Apply transformation to the point cloud
-                pcd = pcd.transform(transform)
+            # Apply transformation to the point cloud
+            pcd = pcd.transform(transform)
 
-                # Add the object to the scene
-                objects_list.append(pcd)
+            # Add the object to the scene
+            objects_list.append(pcd)
 
-                # Add object instance label to list number of times equal to num_objects
-                if obj_class == target_class:
-                    instance_labels_list.extend([idx] * points_to_sample)
-                else:
-                    instance_labels_list.extend([-1] * points_to_sample)
+            # Add object instance label to list number of times equal to num_objects
+            instance_labels_list.extend([-1] * points_to_sample)
 
-                # Add the object to the target list
-                if obj_class == target_class and idx == num_objects - 1:
-                    support_pcd = mesh.sample_points_poisson_disk(number_of_points=points_to_sample, 
-                                                                  init_factor=5)
+            # Add color
+            colors.append(np.random.rand(3,1))
 
         # Move objects into a grid-like pattern
         num_rows = int(np.sqrt(len(objects_list) - 1))
@@ -218,6 +270,16 @@ class FindAnythingDataset(Dataset):
         support_pc = torch.from_numpy(np.concatenate((np.asarray(support_pcd.points),
                                                       np.asarray(support_pcd.normals)),
                                                       axis=1)).type(torch.float32)
+        
+        # Combine all outputs and then shuffle all the rows
+        combined = torch.cat((query_pc, labels.unsqueeze(1), instance_labels.unsqueeze(1)), dim=1)
+        combined = combined[torch.randperm(combined.shape[0])]
+        query_pc = combined[:, :6]
+        labels = combined[:, 6]
+        instance_labels = combined[:, 7]
+
+        # Shuffle support_pc by row separately as it has a different size
+        support_pc = support_pc[torch.randperm(support_pc.shape[0])]
 
         # Return query point cloud, support point cloud, labels, and instance labels as dictionary
         data = {"query": query_pc,
@@ -229,13 +291,10 @@ class FindAnythingDataset(Dataset):
             data["debug_objects_list"] = objects_list
             data["colors"] = colors
 
-        print(time.time() - cur_time)
-
         return data
     
     def __len__(self):
-        # Continue get_item infinitely
-        return None
+        return 100
 
 if __name__ == "__main__":
     # Create a dataset object
@@ -258,6 +317,7 @@ if __name__ == "__main__":
         obj.paint_uniform_color(color)
         vis.add_geometry(obj)
         total_num_points += np.asarray(obj.points).shape[0] 
-    print(total_num_points)
+    print("Total number of points (including plane):", total_num_points)
+    print("Number of objects (excluding plane):", len(data['debug_objects_list']) - 1)
     vis.run()
     vis.destroy_window()
