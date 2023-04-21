@@ -36,10 +36,19 @@ class FindAnythingDataset(Dataset):
 
     SAMPLING_UPSCALE_FACTOR = 1.25
 
-    def __init__(self, root_dir="data/ModelNet", split="train", num_query_points=2048, num_support_points=1024, debug_mode=False):
+    def __init__(
+            self,
+            root_dir: str = "data/ModelNet",
+            split: str = "train",
+            dataset_size: int = 1e6,
+            num_query_points: int = 2048,
+            num_support_points: int = 1024,
+            debug_mode: int = False
+        ):
         # Set variables
         self.root_dir = root_dir
         self.split = split
+        self.dataset_size = dataset_size
         self.debug_mode = debug_mode
         self.num_query_points = num_query_points
         self.num_support_points = num_support_points
@@ -190,10 +199,10 @@ class FindAnythingDataset(Dataset):
                 query_points.append(points)
                 query_normals.append(normals)
                 if i == 0:
-                    query_class_labels.append(np.ones(obj_num_pts[i], dtype=np.uint8))
+                    query_class_labels.append(np.ones(obj_num_pts[i], dtype=np.float32))
                 else:
-                    query_class_labels.append(np.zeros(obj_num_pts[i], dtype=np.uint8))
-                query_instance_labels.append(j * np.ones(obj_num_pts[i], dtype=np.uint8))
+                    query_class_labels.append(np.zeros(obj_num_pts[i], dtype=np.float32))
+                query_instance_labels.append(j * np.ones(obj_num_pts[i], dtype=np.float32))
                 query_pt_colors.append(obj_colors[i].reshape(1, 3).repeat(obj_num_pts[i], axis=0))
 
         # Move objects into a grid-like pattern
@@ -240,49 +249,49 @@ class FindAnythingDataset(Dataset):
 
         return data
     
-    def __len__(self):
-        return 100
+    def __len__(self) -> int:
+        return self.dataset_size
 
 
 if __name__ == "__main__":
-    # Create a dataset object
-    dataset = FindAnythingDataset(debug_mode=True)
+    # # Create a dataset object
+    # dataset = FindAnythingDataset(debug_mode=True)
 
-    # Visualize one point cloud from the dataset
-    data = dataset[0]
-    print("Total number of points (including plane):", len(data["query"]))
-    for obj, obj_count in zip(data["obj_classes"], data["obj_counts"]):
-        print(f"class: {obj:<15} \t count: {obj_count:02d}")
+    # # Visualize one point cloud from the dataset
+    # data = dataset[0]
+    # print("Total number of points (including plane):", len(data["query"]))
+    # for obj, obj_count in zip(data["obj_classes"], data["obj_counts"]):
+    #     print(f"class: {obj:<15} \t count: {obj_count:02d}")
 
-    # Create an open3D visualization window
-    vis = o3d.visualization.Visualizer()
-    vis.create_window()
-    opt = vis.get_render_option()
-    opt.show_coordinate_frame = True
-    opt.background_color = np.asarray([1, 1, 1])
+    # # Create an open3D visualization window
+    # vis = o3d.visualization.Visualizer()
+    # vis.create_window()
+    # opt = vis.get_render_option()
+    # opt.show_coordinate_frame = True
+    # opt.background_color = np.asarray([1, 1, 1])
 
-    point_cloud = data['query'].numpy()
+    # point_cloud = data['query'].numpy()
 
-    scene_pc = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(point_cloud[:, :3]))
-    scene_pc.normals = o3d.utility.Vector3dVector(point_cloud[:, 3:])
-    scene_pc.colors = o3d.utility.Vector3dVector(data["colors"])
+    # scene_pc = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(point_cloud[:, :3]))
+    # scene_pc.normals = o3d.utility.Vector3dVector(point_cloud[:, 3:])
+    # scene_pc.colors = o3d.utility.Vector3dVector(data["colors"])
     
-    vis.add_geometry(scene_pc)
-    vis.run()
-    vis.destroy_window()
+    # vis.add_geometry(scene_pc)
+    # vis.run()
+    # vis.destroy_window()
 
-    # import time
-    # import torch
-    # from torch.utils.data import DataLoader
+    import time
+    import torch
+    from torch.utils.data import DataLoader
 
-    # dataset = FindAnythingDataset(split="train")
-    # dataloader = DataLoader(
-    #     dataset=dataset,
-    #     batch_size=8,
-    #     num_workers=8,
-    # )
+    dataset = FindAnythingDataset(split="train")
+    dataloader = DataLoader(
+        dataset=dataset,
+        batch_size=8,
+        num_workers=8,
+    )
 
-    # start = time.time()
-    # for d in dataloader:
-    #     print(time.time() - start)
-    #     start = time.time()
+    start = time.time()
+    for d in dataloader:
+        print(time.time() - start)
+        start = time.time()

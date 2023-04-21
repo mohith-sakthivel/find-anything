@@ -1,24 +1,32 @@
-from typing import Tuple
+from typing import Optional, Tuple
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from fa.dgcnn import build_conv_block_2d, get_graph_feature
+from fa.dgcnn import build_conv_block_1d, build_conv_block_2d, get_graph_feature
 
 
 class SimpleAggregator(nn.Module):
-    def __init__(self, scene_feat_dim: int, template_feat_dim: int) -> None:
+    def __init__(self, scene_feat_dim: int, template_feat_dim: int, project_dim: Optional[int] = None) -> None:
         super().__init__()
 
         assert scene_feat_dim == template_feat_dim
         self.scene_feat_dim = scene_feat_dim
         self.template_feat_dim = 3 * template_feat_dim
-        self.out_dim = 3 * self.scene_feat_dim
+        if project_dim is None:
+            self.out_dim = 3 * self.scene_feat_dim
+            self.projection_head = None
+        else:
+            self.out_dim = project_dim
+            self.projection_head = build_conv_block_1d(3 * self.scene_feat_dim, project_dim)
 
     def forward(self, scene_feat: torch.Tensor, template_feat: torch.Tensor) -> torch.Tensor:
         template_feat = template_feat.amax(dim=-1, keepdims=True)
         aggr_feat = torch.cat([scene_feat - template_feat, scene_feat * template_feat, scene_feat], dim=-2)
+
+        if self.projection_head is not None:
+            aggr_feat = self.projection_head(aggr_feat)
 
         return aggr_feat
 
