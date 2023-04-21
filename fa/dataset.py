@@ -135,23 +135,11 @@ class FindAnythingDataset(Dataset):
                 mesh = o3d.io.read_triangle_mesh(os.path.join(self.root_dir, obj_classes[i], self.split, obj))
                 
                 # Calculate volume-to-surface area ratio
-<<<<<<< HEAD
-                volume = mesh.get_oriented_bounding_box(robust=True).volume()
-                surface_area = mesh.get_surface_area()
-                ratio = volume / surface_area
-                
-                # Check if ratio is above 2.5
-                if ratio > 2:
-                    continue
-                else:
-                    # Break out of the loop if ratio is not above 2.5
-=======
                 volume = mesh.get_axis_aligned_bounding_box().volume()
                 surface_area = mesh.get_surface_area()
                 ratio = volume / surface_area
                 
                 if ratio < 3:
->>>>>>> 1e8433a8c0eb50994872241db93ada0bd17366d4
                     break
 
             # Randomly scale the object to a volume
@@ -179,6 +167,7 @@ class FindAnythingDataset(Dataset):
 
         total_area = np.sum(obj_surface_areas * obj_counts)
         obj_num_pts = ((obj_surface_areas / total_area) * self.num_query_points).astype(int)
+        # Add residual points from integer division to last object
         obj_num_pts[-1] += (self.num_query_points - np.sum(obj_num_pts * obj_counts))
 
         obj_point_clouds = []
@@ -213,7 +202,7 @@ class FindAnythingDataset(Dataset):
                 points = np.asarray(transformed_pc.points, dtype=np.float32)
                 normals = np.asarray(transformed_pc.normals, dtype=np.float32)
                 if obj_counts[i] > 1:
-                    indices = np.random.choice(int(1.25 * obj_num_pts[i]), obj_num_pts[i], replace=False)
+                    indices = np.random.choice(int(self.SAMPLING_UPSCALE_FACTOR * obj_num_pts[i]), obj_num_pts[i], replace=False)
                     points = points[indices]
                     normals = normals[indices]
                 
@@ -313,10 +302,6 @@ if __name__ == "__main__":
     )
 
     start = time.time()
-<<<<<<< HEAD
-    for d in tqdm(dataloader, total=len(dataloader)):
-=======
     for _ in dataloader:
->>>>>>> 1e8433a8c0eb50994872241db93ada0bd17366d4
         print(time.time() - start)
         start = time.time() 
