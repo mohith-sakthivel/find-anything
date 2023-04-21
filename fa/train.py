@@ -19,24 +19,26 @@ from fa.fusion import SimpleAggregator
 from fa.predictor import DGCNNPredHead
 from fa.model import FindAnything
 from fa.dataset import FindAnythingDataset
-from eval_utils import compute_iou
+from fa.eval_utils import compute_iou
 
 
 config = AttrDict()
-config.seed = 0
+config.seed = 1
 config.device = "cuda"
-config.num_workers = 8
+config.num_workers = 2
 config.epochs = 45
-config.save_dir = ""
-config.batch_size = 16
+config.batch_size = 2
 config.eval_freq = 1  # Epochs after which to eval model
 config.lr = 1e-3
 config.eval_samples = 2000
 config.log_freq = 20  # Iters to log after
 config.save_freq = 5  # Epochs to save after. Set None to not save.
 config.save_path = "checkpoints"
-config.use_pretrained_dgcnn = 'scannet'
-config.use_checkpoint = None
+config.use_pretrained_dgcnn = None
+config.checkpoint = None
+config.wandb = 'disabled'
+config.num_query_points = 2048
+config.num_support_points = 1024
 
 
 @torch.no_grad()
@@ -76,20 +78,32 @@ def evaluate_model(model: nn.Module, data_loader: DataLoader) -> Dict:
 def train_model(config: Dict) -> None:
 
     seed_everything(config.seed)
-    if config.use_checkpoint is None:
-        run_id = config.expname + datetime.datetime.now().strftime("%Y-%m-%d--%H-%M-%S")
+    if config.checkpoint is None:
+        run_id = config.exp_name + '-' + datetime.datetime.now().strftime("%Y-%m-%d--%H-%M-%S")
     else:
-        run_id = config.use_checkpoint
+        run_id = config.checkpoint
 
     wandb_run = wandb.init(
         project="find-anything",
         config=config,
         id=run_id,
-        resume=None if config.use_checkpoint is None else "must"
+        resume=None if config.checkpoint is None else "must",
+        mode=config.wandb
     )
 
-    train_dataloader = FindAnythingDataset(split="train")
-    test_dataloader = FindAnythingDataset(split="test")
+    train_dataloader = DataLoader(
+        dataset=FindAnythingDataset(split="train", num_query_points=config.num_query_points, num_support_points=config.num_support_points),
+        batch_size=config.batch_size,
+        shuffle=False,
+        num_workers=config.num_workers,
+    )
+
+    test_dataloader = DataLoader(
+        dataset=FindAnythingDataset(split="test", num_query_points=config.num_query_points, num_support_points=config.num_support_points),
+        batch_size=config.batch_size,
+        shuffle=False,
+        num_workers=config.num_workers,
+    )
 
     feat_extractor = DGCNNSeg()
     if config.use_pretrained_dgcnn == "scannet":
@@ -111,7 +125,7 @@ def train_model(config: Dict) -> None:
         use_common_feat_extractor=True
     )
 
-    optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=1e-4)
+    optimizer = optim.Adam(model.parameters(), lr=config.lr, weight_decay=1e-4)
     scheduler = optim.lr_scheduler.StepLR(
         optimizer=optimizer,
         step_size=20,
@@ -120,8 +134,8 @@ def train_model(config: Dict) -> None:
     start_epoch = 0
     best_score = -1
 
-    if args.checkpoint is not None:
-        checkpoint = torch.load(args.checkpoint)
+    if config.checkpoint is not None:
+        checkpoint = torch.load(Path(config.save_path) / config.checkpoint) / "last_epoch"
 
         model = checkpoint["model"]
         optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
@@ -143,7 +157,7 @@ def train_model(config: Dict) -> None:
         ):
             optimizer.zero_grad()
 
-            data = data.to(config.device)
+            data = {k: v.to(config.device) for k, v in data.items()}
 
             pred = model(
                 scene_pointcloud=data['query'],
@@ -156,11 +170,7 @@ def train_model(config: Dict) -> None:
             optimizer.step()
 
             if ((iter + 1) % config.log_freq == 0):
-                wandb.log({
-                    "train": {
-                        "loss": loss.detach().cpu().item()
-                    },
-                })
+                wandb.log({"train": {"loss": loss.detach().cpu().item()}})
         
         scheduler.step() 
 
@@ -171,7 +181,7 @@ def train_model(config: Dict) -> None:
             wandb.log({"test": metrics}, commit=False)    
 
         if ((epoch + 1) % config.save_freq == 0 or best_epoch):
-            save_path = Path(config.save_path) / run_id / "best_epoch" if best_epoch else f"epoch_{epoch + 1}" 
+            save_path = Path(config.save_path) / run_id / "best_epoch" if best_epoch else "last_epoch" 
             save_checkpoint(
                 model=model,
                 path=save_path,
@@ -186,12 +196,14 @@ def train_model(config: Dict) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--seed", default=0, type=int)
-    parser.add_argument("--batch_size", default=32, type=int)
-    parser.add_argument("--exp_name", default="default", type=int)
+    parser.add_argument("--seed", default=None, type=int)
+    parser.add_argument("--batch_size", default=None, type=int)
+    parser.add_argument("--exp_name", default="default", type=str)
     args = parser.parse_args()
 
-    for k, v in args.items():
+    for k, v in vars(args).items():
+        if k in config and v is None:
+            continue
         config[k] = v
 
     train_model(config)

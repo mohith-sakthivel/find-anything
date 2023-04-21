@@ -35,14 +35,14 @@ class FindAnythingDataset(Dataset):
     """
 
     SAMPLING_UPSCALE_FACTOR = 1.25
-    SUPPORT_POINT_CLOUD_NUM_POINTS = 1024
 
-    def __init__(self, root_dir="data/ModelNet", split="train", debug_mode=False, num_points=2048):
+    def __init__(self, root_dir="data/ModelNet", split="train", num_query_points=2048, num_support_points=1024, debug_mode=False):
         # Set variables
         self.root_dir = root_dir
         self.split = split
         self.debug_mode = debug_mode
-        self.num_points = num_points
+        self.num_query_points = num_query_points
+        self.num_support_points = num_support_points
 
         # Get all types of objects
         self.obj_classes = [obj_class for obj_class in os.listdir(root_dir)]
@@ -148,8 +148,8 @@ class FindAnythingDataset(Dataset):
         obj_counts = np.array(obj_counts)
 
         total_area = np.sum(obj_surface_areas * obj_counts)
-        obj_num_pts = ((obj_surface_areas / total_area) * self.num_points).astype(int)
-        obj_num_pts[-1] += (self.num_points - np.sum(obj_num_pts * obj_counts))
+        obj_num_pts = ((obj_surface_areas / total_area) * self.num_query_points).astype(int)
+        obj_num_pts[-1] += (self.num_query_points - np.sum(obj_num_pts * obj_counts))
 
         obj_point_clouds = []
         for i in range(len(obj_meshes)):
@@ -221,20 +221,20 @@ class FindAnythingDataset(Dataset):
         instance_labels = torch.from_numpy(np.concatenate(query_instance_labels, axis=0))
 
         # Create support point cloud
-        support_pc = obj_meshes[0].sample_points_uniformly(self.SUPPORT_POINT_CLOUD_NUM_POINTS)
+        support_pc = obj_meshes[0].sample_points_uniformly(self.num_support_points)
         support_pc = np.concatenate([np.asarray(support_pc.points), np.asarray(support_pc.normals)], axis=-1)
         support_pc = torch.from_numpy(support_pc).to(torch.float32)
 
         # Return query point cloud, support point cloud, labels, and instance labels as dictionary
         data = {
-            "query": query_pc[:self.num_points],
-            "class_labels": class_labels[:self.num_points],
-            "instance_label": instance_labels[:self.num_points],
+            "query": query_pc[:self.num_query_points],
+            "class_labels": class_labels[:self.num_query_points],
+            "instance_label": instance_labels[:self.num_query_points],
             "support": support_pc
         }
         
         if self.debug_mode is True:
-            data["colors"] = np.concatenate(query_pt_colors, axis=0)[:self.num_points]
+            data["colors"] = np.concatenate(query_pt_colors, axis=0)[:self.num_query_points]
             data["obj_classes"] = obj_classes
             data["obj_counts"] = obj_counts
 
@@ -245,44 +245,44 @@ class FindAnythingDataset(Dataset):
 
 
 if __name__ == "__main__":
-    # # Create a dataset object
-    # dataset = FindAnythingDataset(debug_mode=True)
+    # Create a dataset object
+    dataset = FindAnythingDataset(debug_mode=True)
 
-    # # Visualize one point cloud from the dataset
-    # data = dataset[0]
-    # print("Total number of points (including plane):", len(data["query"]))
-    # for obj, obj_count in zip(data["obj_classes"], data["obj_counts"]):
-    #     print(f"class: {obj:<15} \t count: {obj_count:02d}")
+    # Visualize one point cloud from the dataset
+    data = dataset[0]
+    print("Total number of points (including plane):", len(data["query"]))
+    for obj, obj_count in zip(data["obj_classes"], data["obj_counts"]):
+        print(f"class: {obj:<15} \t count: {obj_count:02d}")
 
-    # # Create an open3D visualization window
-    # vis = o3d.visualization.Visualizer()
-    # vis.create_window()
-    # opt = vis.get_render_option()
-    # opt.show_coordinate_frame = True
-    # opt.background_color = np.asarray([1, 1, 1])
+    # Create an open3D visualization window
+    vis = o3d.visualization.Visualizer()
+    vis.create_window()
+    opt = vis.get_render_option()
+    opt.show_coordinate_frame = True
+    opt.background_color = np.asarray([1, 1, 1])
 
-    # point_cloud = data['query'].numpy()
+    point_cloud = data['query'].numpy()
 
-    # scene_pc = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(point_cloud[:, :3]))
-    # scene_pc.normals = o3d.utility.Vector3dVector(point_cloud[:, 3:])
-    # scene_pc.colors = o3d.utility.Vector3dVector(data["colors"])
+    scene_pc = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(point_cloud[:, :3]))
+    scene_pc.normals = o3d.utility.Vector3dVector(point_cloud[:, 3:])
+    scene_pc.colors = o3d.utility.Vector3dVector(data["colors"])
     
-    # vis.add_geometry(scene_pc)
-    # vis.run()
-    # vis.destroy_window()
+    vis.add_geometry(scene_pc)
+    vis.run()
+    vis.destroy_window()
 
-    import time
-    import torch
-    from torch.utils.data import DataLoader
+    # import time
+    # import torch
+    # from torch.utils.data import DataLoader
 
-    dataset = FindAnythingDataset(split="train")
-    dataloader = DataLoader(
-        dataset=dataset,
-        batch_size=8,
-        num_workers=8,
-    )
+    # dataset = FindAnythingDataset(split="train")
+    # dataloader = DataLoader(
+    #     dataset=dataset,
+    #     batch_size=8,
+    #     num_workers=8,
+    # )
 
-    start = time.time()
-    for d in dataloader:
-        print(time.time() - start)
-        start = time.time()
+    # start = time.time()
+    # for d in dataloader:
+    #     print(time.time() - start)
+    #     start = time.time()
