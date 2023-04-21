@@ -48,7 +48,7 @@ class FindAnythingDataset(Dataset):
         # Set variables
         self.root_dir = root_dir
         self.split = split
-        self.dataset_size = dataset_size
+        self.dataset_size = int(dataset_size)
         self.debug_mode = debug_mode
         self.num_query_points = num_query_points
         self.num_support_points = num_support_points
@@ -135,6 +135,7 @@ class FindAnythingDataset(Dataset):
                 mesh = o3d.io.read_triangle_mesh(os.path.join(self.root_dir, obj_classes[i], self.split, obj))
                 
                 # Calculate volume-to-surface area ratio
+<<<<<<< HEAD
                 volume = mesh.get_oriented_bounding_box(robust=True).volume()
                 surface_area = mesh.get_surface_area()
                 ratio = volume / surface_area
@@ -144,6 +145,13 @@ class FindAnythingDataset(Dataset):
                     continue
                 else:
                     # Break out of the loop if ratio is not above 2.5
+=======
+                volume = mesh.get_axis_aligned_bounding_box().volume()
+                surface_area = mesh.get_surface_area()
+                ratio = volume / surface_area
+                
+                if ratio < 3:
+>>>>>>> 1e8433a8c0eb50994872241db93ada0bd17366d4
                     break
 
             # Randomly scale the object to a volume
@@ -305,6 +313,10 @@ if __name__ == "__main__":
     )
 
     start = time.time()
+<<<<<<< HEAD
     for d in tqdm(dataloader, total=len(dataloader)):
+=======
+    for _ in dataloader:
+>>>>>>> 1e8433a8c0eb50994872241db93ada0bd17366d4
         print(time.time() - start)
         start = time.time() 
