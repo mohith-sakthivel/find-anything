@@ -35,14 +35,23 @@ class FindAnythingDataset(Dataset):
     """
 
     SAMPLING_UPSCALE_FACTOR = 1.25
-    SUPPORT_POINT_CLOUD_NUM_POINTS = 1024
 
-    def __init__(self, root_dir="data/ModelNet", split="train", debug_mode=False, num_points=2048):
+    def __init__(
+            self,
+            root_dir: str = "data/ModelNet",
+            split: str = "train",
+            dataset_size: int = 1e6,
+            num_query_points: int = 2048,
+            num_support_points: int = 1024,
+            debug_mode: int = False
+        ):
         # Set variables
         self.root_dir = root_dir
         self.split = split
+        self.dataset_size = dataset_size
         self.debug_mode = debug_mode
-        self.num_points = num_points
+        self.num_query_points = num_query_points
+        self.num_support_points = num_support_points
 
         # Get all types of objects
         self.obj_classes = [obj_class for obj_class in os.listdir(root_dir)]
@@ -161,8 +170,8 @@ class FindAnythingDataset(Dataset):
         obj_counts = np.array(obj_counts)
 
         total_area = np.sum(obj_surface_areas * obj_counts)
-        obj_num_pts = ((obj_surface_areas / total_area) * self.num_points).astype(int)
-        obj_num_pts[-1] += (self.num_points - np.sum(obj_num_pts * obj_counts))
+        obj_num_pts = ((obj_surface_areas / total_area) * self.num_query_points).astype(int)
+        obj_num_pts[-1] += (self.num_query_points - np.sum(obj_num_pts * obj_counts))
 
         obj_point_clouds = []
         for i in range(len(obj_meshes)):
@@ -203,10 +212,10 @@ class FindAnythingDataset(Dataset):
                 query_points.append(points)
                 query_normals.append(normals)
                 if i == 0:
-                    query_class_labels.append(np.ones(obj_num_pts[i], dtype=np.uint8))
+                    query_class_labels.append(np.ones(obj_num_pts[i], dtype=np.float32))
                 else:
-                    query_class_labels.append(np.zeros(obj_num_pts[i], dtype=np.uint8))
-                query_instance_labels.append(j * np.ones(obj_num_pts[i], dtype=np.uint8))
+                    query_class_labels.append(np.zeros(obj_num_pts[i], dtype=np.float32))
+                query_instance_labels.append(j * np.ones(obj_num_pts[i], dtype=np.float32))
                 query_pt_colors.append(obj_colors[i].reshape(1, 3).repeat(obj_num_pts[i], axis=0))
 
         # Move objects into a grid-like pattern
@@ -234,27 +243,27 @@ class FindAnythingDataset(Dataset):
         instance_labels = torch.from_numpy(np.concatenate(query_instance_labels, axis=0))
 
         # Create support point cloud
-        support_pc = obj_meshes[0].sample_points_uniformly(self.SUPPORT_POINT_CLOUD_NUM_POINTS)
+        support_pc = obj_meshes[0].sample_points_uniformly(self.num_support_points)
         support_pc = np.concatenate([np.asarray(support_pc.points), np.asarray(support_pc.normals)], axis=-1)
         support_pc = torch.from_numpy(support_pc).to(torch.float32)
 
         # Return query point cloud, support point cloud, labels, and instance labels as dictionary
         data = {
-            "query": query_pc[:self.num_points],
-            "class_labels": class_labels[:self.num_points],
-            "instance_label": instance_labels[:self.num_points],
+            "query": query_pc[:self.num_query_points],
+            "class_labels": class_labels[:self.num_query_points],
+            "instance_label": instance_labels[:self.num_query_points],
             "support": support_pc
         }
         
         if self.debug_mode is True:
-            data["colors"] = np.concatenate(query_pt_colors, axis=0)[:self.num_points]
+            data["colors"] = np.concatenate(query_pt_colors, axis=0)[:self.num_query_points]
             data["obj_classes"] = obj_classes
             data["obj_counts"] = obj_counts
 
         return data
     
-    def __len__(self):
-        return 100
+    def __len__(self) -> int:
+        return self.dataset_size
 
 
 if __name__ == "__main__":

@@ -19,28 +19,45 @@ from fa.fusion import SimpleAggregator
 from fa.predictor import DGCNNPredHead
 from fa.model import FindAnything
 from fa.dataset import FindAnythingDataset
-from eval_utils import compute_iou
+from fa.eval_utils import compute_iou
 
 
 config = AttrDict()
+
+# Setup
 config.seed = 0
 config.device = "cuda"
 config.num_workers = 8
+
+# Model
+config.use_pretrained_dgcnn = None
+config.aggr_feat_size = 128
+
+# Train
 config.epochs = 45
-config.save_dir = ""
 config.batch_size = 16
-config.eval_freq = 1  # Epochs after which to eval model
 config.lr = 1e-3
-config.eval_samples = 2000
+config.train_dataset_size = 1e6
+
+# Test
+config.eval_freq = 1  # Epochs after which to eval model
+config.test_dataset_size = 2000
+
+# Problem Framework
+config.num_query_points = 2048
+config.num_support_points = 1024
+config.pred_threshold = 0.5
+
+# Utils
 config.log_freq = 20  # Iters to log after
-config.save_freq = 5  # Epochs to save after. Set None to not save.
+config.save_freq = 2  # Epochs to save after. Set None to not save.
 config.save_path = "checkpoints"
-config.use_pretrained_dgcnn = 'scannet'
-config.use_checkpoint = None
+config.checkpoint = None
+config.wandb = 'online'
 
 
 @torch.no_grad()
-def evaluate_model(model: nn.Module, data_loader: DataLoader) -> Dict:
+def evaluate_model(model: nn.Module, data_loader: DataLoader, config: Dict) -> Dict:
     model.eval()
 
     true_labels = []
@@ -49,7 +66,7 @@ def evaluate_model(model: nn.Module, data_loader: DataLoader) -> Dict:
 
     for data in tqdm.tqdm(iterable=data_loader, desc=f"Test", total=len(data_loader)):
 
-        data = data.to(config.device)
+        data = {k: v.to(config.device) for k, v in data.items()}
 
         pred = model(
             scene_pointcloud=data['query'],
@@ -57,7 +74,7 @@ def evaluate_model(model: nn.Module, data_loader: DataLoader) -> Dict:
         )
         loss.append(F.binary_cross_entropy_with_logits(pred, data['class_labels'], reduction='mean').cpu().item())
 
-        pred_labels.append(pred.argmax(dim=-1).cpu().numpy())
+        pred_labels.append((pred > config.pred_threshold).to(torch.float32).cpu().numpy())
         true_labels.append(data['class_labels'].cpu().numpy())
     
     pred_labels = np.concatenate(pred_labels, axis=0)
@@ -65,8 +82,8 @@ def evaluate_model(model: nn.Module, data_loader: DataLoader) -> Dict:
 
     metrics = {
         "loss": np.mean(loss),
-        "accuracy": accuracy_score(true_labels, pred_labels),
-        "balanced_accuracy": balanced_accuracy_score(true_labels, pred_labels),
+        "accuracy": accuracy_score(true_labels.reshape(-1), pred_labels.reshape(-1)),
+        "balanced_accuracy": balanced_accuracy_score(true_labels.reshape(-1), pred_labels.reshape(-1)),
         "iou": compute_iou(pred_labels, true_labels)
     }
 
@@ -76,20 +93,44 @@ def evaluate_model(model: nn.Module, data_loader: DataLoader) -> Dict:
 def train_model(config: Dict) -> None:
 
     seed_everything(config.seed)
-    if config.use_checkpoint is None:
-        run_id = config.expname + datetime.datetime.now().strftime("%Y-%m-%d--%H-%M-%S")
+    if config.checkpoint is None:
+        run_id = config.exp_name + '-' + datetime.datetime.now().strftime("%Y-%m-%d--%H-%M-%S")
     else:
-        run_id = config.use_checkpoint
+        run_id = config.checkpoint
 
     wandb_run = wandb.init(
         project="find-anything",
         config=config,
         id=run_id,
-        resume=None if config.use_checkpoint is None else "must"
+        resume=None if config.checkpoint is None else "must",
+        mode=config.wandb
     )
 
-    train_dataloader = FindAnythingDataset(split="train")
-    test_dataloader = FindAnythingDataset(split="test")
+    train_dataset = FindAnythingDataset(
+        split="train",
+        num_query_points=config.num_query_points,
+        num_support_points=config.num_support_points
+        dataset_size=config.train_dataset_size,
+    )
+    train_dataloader = DataLoader(
+        dataset=train_dataset,
+        batch_size=config.batch_size,
+        shuffle=False,
+        num_workers=config.num_workers,
+    )
+
+    test_dataset = FindAnythingDataset(
+        split="test",
+        num_query_points=config.num_query_points,
+        num_support_points=config.num_support_points,
+        num_workers=config.test_dataset_size
+    )
+    test_dataloader = DataLoader(
+        dataset=test_dataset,
+        batch_size=config.batch_size,
+        shuffle=False,
+        num_workers=config.num_workers,
+    )
 
     feat_extractor = DGCNNSeg()
     if config.use_pretrained_dgcnn == "scannet":
@@ -99,7 +140,8 @@ def train_model(config: Dict) -> None:
 
     feat_agg = SimpleAggregator(
         scene_feat_dim=feat_extractor.feat_dim,
-        template_feat_dim=feat_extractor.feat_dim
+        template_feat_dim=feat_extractor.feat_dim,
+        project_dim=config.aggr_feat_size
     )
     pred_head = DGCNNPredHead(in_dim=feat_agg.out_dim)
 
@@ -111,17 +153,17 @@ def train_model(config: Dict) -> None:
         use_common_feat_extractor=True
     )
 
-    optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=1e-4)
+    optimizer = optim.Adam(model.parameters(), lr=config.lr, weight_decay=1e-4)
     scheduler = optim.lr_scheduler.StepLR(
         optimizer=optimizer,
         step_size=20,
         gamma=0.5
     )
     start_epoch = 0
-    best_score = -1
+    best_iou = -1
 
-    if args.checkpoint is not None:
-        checkpoint = torch.load(args.checkpoint)
+    if config.checkpoint is not None:
+        checkpoint = torch.load(Path(config.save_path) / config.checkpoint) / "last_epoch"
 
         model = checkpoint["model"]
         optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
@@ -138,12 +180,12 @@ def train_model(config: Dict) -> None:
 
         for iter, data in tqdm.tqdm(
             iterable=enumerate(train_dataloader),
-            desc=f"Epoch {epoch:04d}/{config.epochs} train",
+            desc=f"Epoch {epoch:04d}/{config.epochs}",
             total=len(train_dataloader)
         ):
             optimizer.zero_grad()
 
-            data = data.to(config.device)
+            data = {k: v.to(config.device) for k, v in data.items()}
 
             pred = model(
                 scene_pointcloud=data['query'],
@@ -156,22 +198,24 @@ def train_model(config: Dict) -> None:
             optimizer.step()
 
             if ((iter + 1) % config.log_freq == 0):
-                wandb.log({
-                    "train": {
-                        "loss": loss.detach().cpu().item()
-                    },
-                })
+                tqdm.tqdm.write(f"Loss: {loss.detach().cpu().item():.6f}")
+                wandb.log({"train": {"loss": loss.detach().cpu().item()}})
         
         scheduler.step() 
 
         best_epoch = False
         if ((epoch + 1) % config.eval_freq == 0):
-            metrics = evaluate_model(model, test_dataloader)
+            metrics = evaluate_model(model, test_dataloader, config)
 
-            wandb.log({"test": metrics}, commit=False)    
+            if (metrics["iou"] > best_iou):
+                best_iou = metrics["iou"]
+                best_epoch = True
+
+            wandb.log({"test": metrics}, commit=False) 
+            tqdm.write(f"Epoch: {epoch + 1:04d} \t iou: {metrics['iou']:.4f} \t loss: {metrics['loss']:0.6f}")   
 
         if ((epoch + 1) % config.save_freq == 0 or best_epoch):
-            save_path = Path(config.save_path) / run_id / "best_epoch" if best_epoch else f"epoch_{epoch + 1}" 
+            save_path = Path(config.save_path) / run_id / ("best_epoch" if best_epoch else "last_epoch")
             save_checkpoint(
                 model=model,
                 path=save_path,
@@ -186,12 +230,14 @@ def train_model(config: Dict) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--seed", default=0, type=int)
-    parser.add_argument("--batch_size", default=32, type=int)
-    parser.add_argument("--exp_name", default="default", type=int)
+    parser.add_argument("--seed", default=None, type=int)
+    parser.add_argument("--batch_size", default=None, type=int)
+    parser.add_argument("--exp_name", default="default", type=str)
     args = parser.parse_args()
 
-    for k, v in args.items():
+    for k, v in vars(args).items():
+        if k in config and v is None:
+            continue
         config[k] = v
 
     train_model(config)

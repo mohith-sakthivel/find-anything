@@ -24,7 +24,7 @@ def seed_everything(seed: int) -> None:
 
 
 def save_checkpoint(
-        model: torch.Module,
+        model: nn.Module,
         path: Path,
         save_only_state_dict: bool = True,
         optimizer: Optional[optim.Optimizer] = None,

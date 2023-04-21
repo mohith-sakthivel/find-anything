@@ -8,16 +8,14 @@ from fa.predictor import DGCNNPredHead
 
 
 class FindAnything(nn.Module):
-
     def __init__(
         self,
         scene_feat_extractor: nn.Module,
         fusion_module: nn.Module = SimpleAggregator,
         pred_head: nn.Module = DGCNNPredHead,
         template_feat_extractor: Optional[nn.Module] = None,
-        use_common_feat_extractor: bool = True
+        use_common_feat_extractor: bool = True,
     ) -> None:
-        
         super().__init__()
 
         self.scene_feat_extractor = scene_feat_extractor
@@ -27,8 +25,9 @@ class FindAnything(nn.Module):
         self.template_feat_extractor = template_feat_extractor
         self.use_common_feat_extractor = use_common_feat_extractor
 
-    def forward(self, scene_pointcloud: torch.Tensor, template_pointcloud: torch.Tensor) -> torch.Tensor:
-
+    def forward(
+        self, scene_pointcloud: torch.Tensor, template_pointcloud: torch.Tensor
+    ) -> torch.Tensor:
         scene_feat = self.scene_feat_extractor(scene_pointcloud)
         if self.use_common_feat_extractor:
             template_feat = self.scene_feat_extractor(template_pointcloud)

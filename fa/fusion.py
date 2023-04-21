@@ -1,40 +1,46 @@
-from typing import Tuple
+from typing import Optional, Tuple
 
-import torch 
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from fa.dgcnn import build_conv_block_2d, get_graph_feature
+from fa.dgcnn import build_conv_block_1d, build_conv_block_2d, get_graph_feature
 
 
 class SimpleAggregator(nn.Module):
-
-    def __init__(self, scene_feat_dim: int, template_feat_dim: int) -> None:
+    def __init__(self, scene_feat_dim: int, template_feat_dim: int, project_dim: Optional[int] = None) -> None:
         super().__init__()
 
         assert scene_feat_dim == template_feat_dim
         self.scene_feat_dim = scene_feat_dim
         self.template_feat_dim = 3 * template_feat_dim
-        self.out_dim = 3 * self.scene_feat_dim
+        if project_dim is None:
+            self.out_dim = 3 * self.scene_feat_dim
+            self.projection_head = None
+        else:
+            self.out_dim = project_dim
+            self.projection_head = build_conv_block_1d(3 * self.scene_feat_dim, project_dim)
 
     def forward(self, scene_feat: torch.Tensor, template_feat: torch.Tensor) -> torch.Tensor:
-        template_feat = template_feat.max(dim=-1, keepdims=True)
+        template_feat = template_feat.amax(dim=-1, keepdims=True)
         aggr_feat = torch.cat([scene_feat - template_feat, scene_feat * template_feat, scene_feat], dim=-2)
+
+        if self.projection_head is not None:
+            aggr_feat = self.projection_head(aggr_feat)
 
         return aggr_feat
 
 
 class DynamicConvolution(nn.Module):
-
     def __init__(
-            self,
-            scene_feat_dim: int,
-            template_feat_dim: int,
-            cond_conv_num_layers: int,
-            cond_conv_feat_dim: int,
-            use_coords: bool = True,
-            predict_mask: bool = True
-        ) -> None:
+        self,
+        scene_feat_dim: int,
+        template_feat_dim: int,
+        cond_conv_num_layers: int,
+        cond_conv_feat_dim: int,
+        use_coords: bool = True,
+        predict_mask: bool = True,
+    ) -> None:
         super().__init__()
 
         self.scene_feat_dim = scene_feat_dim
@@ -53,7 +59,7 @@ class DynamicConvolution(nn.Module):
             else:
                 self.weight_dims.append(cond_conv_feat_dim * cond_conv_feat_dim)
                 self.bias_dims.append(cond_conv_feat_dim)
-        
+
         if predict_mask:
             self.weight_dims.append(cond_conv_feat_dim * 1)
             self.bias_dims.append(1)
@@ -63,7 +69,7 @@ class DynamicConvolution(nn.Module):
         self.controller_head = nn.Sequential(
             nn.Conv1d(template_feat_dim, template_feat_dim),
             nn.ReLU(inplace=True),
-            nn.Conv1d(template_feat_dim, sum(self.weight_dims) + sum(self.bias_dims))
+            nn.Conv1d(template_feat_dim, sum(self.weight_dims) + sum(self.bias_dims)),
         )
 
         self.process_scene_feat = build_conv_block_2d(scene_feat_dim, cond_conv_feat_dim)
@@ -89,7 +95,7 @@ class DynamicConvolution(nn.Module):
     def forward(self, scene_feat: torch.Tensor, template_feat: torch.Tensor) -> torch.Tensor:
         scene_feat = get_graph_feature(scene_feat)
         scene_feat = self.process_scene_feat(scene_feat).amax(dim=-1)
-        
+
         template_feat = get_graph_feature(template_feat)
         template_feat = self.process_template_feat(template_feat).amax(dim=-1)
 
