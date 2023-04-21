@@ -109,7 +109,7 @@ def train_model(config: Dict) -> None:
     train_dataset = FindAnythingDataset(
         split="train",
         num_query_points=config.num_query_points,
-        num_support_points=config.num_support_points
+        num_support_points=config.num_support_points,
         dataset_size=config.train_dataset_size,
     )
     train_dataloader = DataLoader(
@@ -123,7 +123,7 @@ def train_model(config: Dict) -> None:
         split="test",
         num_query_points=config.num_query_points,
         num_support_points=config.num_support_points,
-        num_workers=config.test_dataset_size
+        dataset_size=config.test_dataset_size
     )
     test_dataloader = DataLoader(
         dataset=test_dataset,
@@ -163,7 +163,7 @@ def train_model(config: Dict) -> None:
     best_iou = -1
 
     if config.checkpoint is not None:
-        checkpoint = torch.load(Path(config.save_path) / config.checkpoint) / "last_epoch"
+        checkpoint = torch.load(Path(config.save_path) / config.checkpoint / "last_epoch")
 
         model = checkpoint["model"]
         optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
@@ -176,7 +176,7 @@ def train_model(config: Dict) -> None:
     for epoch in range(start_epoch, config.epochs):
         model.train()
 
-        wandb.log({"train": {"epoch": epoch, "lr": scheduler.get_lr()}}, commit=False)
+        wandb.log({"train": {"epoch": epoch, "lr": scheduler.get_last_lr()[0]}}, commit=False)
 
         for iter, data in tqdm.tqdm(
             iterable=enumerate(train_dataloader),
@@ -212,7 +212,7 @@ def train_model(config: Dict) -> None:
                 best_epoch = True
 
             wandb.log({"test": metrics}, commit=False) 
-            tqdm.write(f"Epoch: {epoch + 1:04d} \t iou: {metrics['iou']:.4f} \t loss: {metrics['loss']:0.6f}")   
+            tqdm.tqdm.write(f"Epoch: {epoch + 1:04d} \t iou: {metrics['iou']:.4f} \t loss: {metrics['loss']:0.6f}")   
 
         if ((epoch + 1) % config.save_freq == 0 or best_epoch):
             save_path = Path(config.save_path) / run_id / ("best_epoch" if best_epoch else "last_epoch")
@@ -233,6 +233,7 @@ if __name__ == "__main__":
     parser.add_argument("--seed", default=None, type=int)
     parser.add_argument("--batch_size", default=None, type=int)
     parser.add_argument("--exp_name", default="default", type=str)
+    parser.add_argument("--checkpoint", default=None, type=str)
     args = parser.parse_args()
 
     for k, v in vars(args).items():

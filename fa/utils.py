@@ -1,3 +1,4 @@
+import os
 import random
 import numpy as np
 from pathlib import Path
@@ -31,6 +32,9 @@ def save_checkpoint(
         scheduler: Optional[optim.lr_scheduler._LRScheduler] = None,
         epoch: Optional[int] = None
     ) -> None:
+
+    if not os.path.exists(path.parent):
+        os.makedirs(path.parent)
 
     save_dict = {}
 

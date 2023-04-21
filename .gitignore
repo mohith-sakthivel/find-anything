@@ -1,7 +1,6 @@
 data/
 docs/
-logs/
-models/
+checkpoints/
 wandb/
 
 __pycache__

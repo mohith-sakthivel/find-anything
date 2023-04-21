@@ -48,7 +48,7 @@ class FindAnythingDataset(Dataset):
         # Set variables
         self.root_dir = root_dir
         self.split = split
-        self.dataset_size = dataset_size
+        self.dataset_size = int(dataset_size)
         self.debug_mode = debug_mode
         self.num_query_points = num_query_points
         self.num_support_points = num_support_points
