@@ -125,19 +125,32 @@ class FindAnythingDataset(Dataset):
         obj_colors = [np.array(self.cmap(i))[:3] for i in np.linspace(0, 1, num=len(obj_classes))]
 
         for i in range(len(obj_classes)):
-            if self.split == "train":
-                obj = np.random.choice(self.train_obj_dict[obj_classes[i]])
-            else:
-                obj = np.random.choice(self.test_obj_dict[obj_classes[i]])
+            while True:
+                if self.split == "train":
+                    obj = np.random.choice(self.train_obj_dict[obj_classes[i]])
+                else:
+                    obj = np.random.choice(self.test_obj_dict[obj_classes[i]])
 
-            # Load the object
-            mesh = o3d.io.read_triangle_mesh(os.path.join(self.root_dir, obj_classes[i], self.split, obj))
+                # Load the object
+                mesh = o3d.io.read_triangle_mesh(os.path.join(self.root_dir, obj_classes[i], self.split, obj))
+                
+                # Calculate volume-to-surface area ratio
+                volume = mesh.get_oriented_bounding_box(robust=True).volume()
+                surface_area = mesh.get_surface_area()
+                ratio = volume / surface_area
+                
+                # Check if ratio is above 2.5
+                if ratio > 2:
+                    continue
+                else:
+                    # Break out of the loop if ratio is not above 2.5
+                    break
 
-            # Randomly scale the object
+            # Randomly scale the object to a volume
             scale = random.uniform(self.object_size_range[0], self.object_size_range[1])
 
             # Scale the object to be the randomized scaling factor
-            mesh.scale(scale / np.max(mesh.get_max_bound() - mesh.get_min_bound()), center=mesh.get_center())
+            mesh.scale(scale / np.max(mesh.get_oriented_bounding_box(robust=True).extent), center=mesh.get_center())
             obj_surface_areas.append(mesh.get_surface_area())
 
             # Get the bounding box dimensions and center
@@ -292,6 +305,6 @@ if __name__ == "__main__":
     )
 
     start = time.time()
-    for d in dataloader:
+    for d in tqdm(dataloader, total=len(dataloader)):
         print(time.time() - start)
-        start = time.time()
+        start = time.time() 
