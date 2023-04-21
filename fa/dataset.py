@@ -1,5 +1,6 @@
 import os
 import random
+import matplotlib
 import numpy as np
 import open3d as o3d
 from tqdm import tqdm
@@ -32,11 +33,16 @@ class FindAnythingDataset(Dataset):
                 the scene that is returned if debug_mode is set to True (default is False), including the
                 plane and all objects in the scene
     """
-    def __init__(self, root_dir="data/ModelNet", split="train", debug_mode=False):
+
+    SAMPLING_UPSCALE_FACTOR = 1.25
+    SUPPORT_POINT_CLOUD_NUM_POINTS = 1024
+
+    def __init__(self, root_dir="data/ModelNet", split="train", debug_mode=False, num_points=2048):
         # Set variables
         self.root_dir = root_dir
         self.split = split
         self.debug_mode = debug_mode
+        self.num_points = num_points
 
         # Get all types of objects
         self.obj_classes = [obj_class for obj_class in os.listdir(root_dir)]
@@ -46,27 +52,11 @@ class FindAnythingDataset(Dataset):
         self.max_scene_instances = 10
         self.min_target_instances = 1
         self.max_target_instances = 3
-        self.point_density_by_area = 10
         self.points_on_plane = 300
         self.object_size_range = [2, 3]
         self.plane_side_dim = 15
 
-        # Create the ground plane to place objects on
-        mesh_plane = o3d.geometry.TriangleMesh.create_box(width=self.plane_side_dim,
-                                                          height=self.plane_side_dim,
-                                                          depth=0.01)
-        # Get the bounding box dimensions and center
-        bbox = mesh_plane.get_axis_aligned_bounding_box()
-        bbox_center = bbox.get_center()
-        bbox_dims = bbox.get_max_bound() - bbox.get_min_bound()
-
-        # Move the object so that the top of the bounding box is at z=0
-        mesh_plane.translate([-bbox_center[0], -bbox_center[1], -bbox_dims[2]])
-
-        # Turn it into a point cloud
-        mesh_plane.compute_vertex_normals()
-        self.mesh_pc = mesh_plane.sample_points_poisson_disk(number_of_points=self.points_on_plane,
-                                                             init_factor=5)
+        self.cmap = matplotlib.colormaps['jet']
 
         # Get list of all objects separated by train and test per class
         self.train_obj_dict = dict()
@@ -90,117 +80,56 @@ class FindAnythingDataset(Dataset):
                 + 1 plane
         """
         # Create a list of mesh objects to place in the scene
-        objects_list = [self.mesh_pc]
-        labels_list = [0] * self.points_on_plane
-        instance_labels_list = [-1] * self.points_on_plane
-
-        # Randomly select the number of classes to include in the scene
-        num_scene_instances = random.randint(self.min_scene_instances, self.max_scene_instances)
+        obj_classes = []
+        obj_class_ids = []
+        obj_counts = []
+        obj_meshes = []
+        obj_surface_areas = []
 
         # Randomly determine one class to be the target class
-        target_class = random.choice(self.obj_classes)
+        target_class_id = np.random.randint(low=0, high=len(self.obj_classes))
 
-        # Remove the target class from list for sampling negative instances
-        obj_classes_less_target = self.obj_classes.copy()  # Create a copy of the original list
-        obj_classes_less_target.remove(target_class)  # Remove the item from the new list
-
-        # Randomly sample colors for each class
-        colors = [np.array([[0], [0], [0]])]
+        # Randomly select the number of classes to include in the scene
+        num_scene_instances = np.random.randint(self.min_scene_instances, self.max_scene_instances)
 
         # Randomly select the number of target instances to include in the scene
-        num_target_instances = random.randint(self.min_target_instances, self.max_target_instances)
+        num_target_instances = random.randint(self.min_target_instances, min(self.max_target_instances, num_scene_instances))
 
-        # First sample target instance
-        if self.split == "train":
-            obj = random.choice(self.train_obj_dict[target_class])
-        else:
-            obj = random.choice(self.test_obj_dict[target_class])
+        obj_class_ids.append(target_class_id)
+        obj_classes.append(self.obj_classes[target_class_id])
+        obj_counts.append(num_target_instances)
 
-        # Load the object
-        mesh = o3d.io.read_triangle_mesh(os.path.join(self.root_dir, target_class, self.split, obj))
+        # Remove the target class from list for sampling negative instances
+        available_class_ids = [i for i in range(len(self.obj_classes)) if i != target_class_id]
+        non_target_class_ids = np.random.choice(available_class_ids, size=(num_scene_instances - num_target_instances), replace=True)
+        non_target_class_counts = {}
+        for c in non_target_class_ids:
+            non_target_class_counts[c] = non_target_class_counts.get(c, 0) + 1
         
-        # Randomly scale the object
-        scale = random.uniform(self.object_size_range[0], self.object_size_range[1])
+        # Add to object counts
+        for k, v in non_target_class_counts.items():
+            obj_class_ids.append(k)
+            obj_counts.append(v)
+            obj_classes.append(self.obj_classes[k])
 
-        # Scale the object to be the randomized scaling factor
-        mesh.scale(scale / np.max(mesh.get_max_bound() - mesh.get_min_bound()), center=mesh.get_center())
+        # Add a color for each class
+        obj_colors = [np.array(self.cmap(i))[:3] for i in np.linspace(0, 1, num=len(obj_classes))]
 
-        # Get surface area of the mesh
-        mesh_sa = mesh.get_surface_area()
-        points_to_sample = int(mesh_sa * self.point_density_by_area)
-
-        # Add class binary label to list number of times equal to num_objects
-        labels_list.extend([1] * num_target_instances * points_to_sample)
-
-        # Get the bounding box dimensions and center
-        bbox = mesh.get_axis_aligned_bounding_box()
-        bbox_center = bbox.get_center()
-        bbox_dims = bbox.get_max_bound() - bbox.get_min_bound()
-
-        # Move the object so that the bounding box center is above the origin and the 
-        # bottom of the bounding box is at z=0
-        mesh.translate(-bbox_center)
-        mesh.translate([0, 0, bbox_dims[2] / 2])
-
-        # Target color is yellow
-        color = np.array([[1], [1], [0]])
-
-        # Loop through each object and add it to the scene
-        for idx in range(num_target_instances):
-            # Sample points from the mesh
-            mesh.compute_vertex_normals()
-            pcd = mesh.sample_points_poisson_disk(number_of_points=points_to_sample, 
-                                                    init_factor=5)
-
-            # Define a random position and orientation for the object - no randomness in position currently
-            z_rot = random.uniform(0, 360)
-            rotation = o3d.geometry.get_rotation_matrix_from_xyz([0, 0, z_rot])
-
-            # Create transformation matrix
-            transform = np.zeros((4, 4))
-            transform[:3, :3] = rotation
-            transform[3, 3] = 1
-
-            # Apply transformation to the point cloud
-            pcd = pcd.transform(transform)
-
-            # Add the object to the scene
-            objects_list.append(pcd)
-
-            # Add object instance label to list number of times equal to num_objects
-            instance_labels_list.extend([idx] * points_to_sample)
-
-            # Add the object to the target list
-            if idx == num_target_instances - 1:
-                support_pcd = mesh.sample_points_poisson_disk(number_of_points=points_to_sample, 
-                                                                init_factor=5)
-
-            colors.append(color)
-        
-        # 2. Sample negative instances
-        for idx in range(num_scene_instances - num_target_instances):
-            # Sample negative instance class, then sample object from that class
-            neg_class = random.choice(obj_classes_less_target)
+        for i in range(len(obj_classes)):
             if self.split == "train":
-                obj = random.choice(self.train_obj_dict[neg_class])
+                obj = np.random.choice(self.train_obj_dict[obj_classes[i]])
             else:
-                obj = random.choice(self.test_obj_dict[neg_class])
+                obj = np.random.choice(self.test_obj_dict[obj_classes[i]])
 
             # Load the object
-            mesh = o3d.io.read_triangle_mesh(os.path.join(self.root_dir, neg_class, self.split, obj))
-            
+            mesh = o3d.io.read_triangle_mesh(os.path.join(self.root_dir, obj_classes[i], self.split, obj))
+
             # Randomly scale the object
             scale = random.uniform(self.object_size_range[0], self.object_size_range[1])
 
             # Scale the object to be the randomized scaling factor
             mesh.scale(scale / np.max(mesh.get_max_bound() - mesh.get_min_bound()), center=mesh.get_center())
-
-            # Get surface area of the mesh
-            mesh_sa = mesh.get_surface_area()
-            points_to_sample = int(mesh_sa * self.point_density_by_area)
-
-            # Add class binary label to list number of times equal to num_objects
-            labels_list.extend([0] * points_to_sample)
+            obj_surface_areas.append(mesh.get_surface_area())
 
             # Get the bounding box dimensions and center
             bbox = mesh.get_axis_aligned_bounding_box()
@@ -212,115 +141,148 @@ class FindAnythingDataset(Dataset):
             mesh.translate(-bbox_center)
             mesh.translate([0, 0, bbox_dims[2] / 2])
 
-            # Sample points from the mesh
             mesh.compute_vertex_normals()
-            pcd = mesh.sample_points_poisson_disk(number_of_points=points_to_sample, 
-                                                    init_factor=5)
+            obj_meshes.append(mesh)
 
-            # Define a random position and orientation for the object - no randomness in position currently
-            z_rot = random.uniform(0, 360)
-            rotation = o3d.geometry.get_rotation_matrix_from_xyz([0, 0, z_rot])
+        obj_surface_areas = np.array(obj_surface_areas)
+        obj_counts = np.array(obj_counts)
 
-            # Create transformation matrix
-            transform = np.zeros((4, 4))
-            transform[:3, :3] = rotation
-            transform[3, 3] = 1
+        total_area = np.sum(obj_surface_areas * obj_counts)
+        obj_num_pts = ((obj_surface_areas / total_area) * self.num_points).astype(int)
+        obj_num_pts[-1] += (self.num_points - np.sum(obj_num_pts * obj_counts))
 
-            # Apply transformation to the point cloud
-            pcd = pcd.transform(transform)
+        obj_point_clouds = []
+        for i in range(len(obj_meshes)):
+            if (obj_counts[i] == 1):
+                pc = obj_meshes[i].sample_points_uniformly(obj_num_pts[i])
+            else:
+                pc = obj_meshes[i].sample_points_uniformly(int(self.SAMPLING_UPSCALE_FACTOR * obj_num_pts[i]))
+            obj_point_clouds.append(pc)
 
-            # Add the object to the scene
-            objects_list.append(pcd)
+        query_points = []
+        query_normals = []
+        query_class_labels = []
+        query_instance_labels = []
+        query_pt_colors = []
 
-            # Add object instance label to list number of times equal to num_objects
-            instance_labels_list.extend([-1] * points_to_sample)
+        for i in range(len(obj_classes)):
+            for j in range(obj_counts[i]):
 
-            # Add color
-            colors.append(np.random.rand(3,1))
+                # Define a random position and orientation for the object - no randomness in position currently
+                z_rot = random.uniform(0, 360)
+                rotation = o3d.geometry.get_rotation_matrix_from_xyz([0, 0, z_rot])
+
+                # Create transformation matrix
+                transform = np.zeros((4, 4))
+                transform[:3, :3] = rotation
+                transform[3, 3] = 1
+
+                # Apply transformation to the point cloud
+                transformed_pc = obj_point_clouds[i].transform(transform)
+
+                points = np.asarray(transformed_pc.points, dtype=np.float32)
+                normals = np.asarray(transformed_pc.normals, dtype=np.float32)
+                if obj_counts[i] > 1:
+                    indices = np.random.choice(int(1.25 * obj_num_pts[i]), obj_num_pts[i], replace=False)
+                    points = points[indices]
+                    normals = normals[indices]
+                
+                query_points.append(points)
+                query_normals.append(normals)
+                if i == 0:
+                    query_class_labels.append(np.ones(obj_num_pts[i], dtype=np.uint8))
+                else:
+                    query_class_labels.append(np.zeros(obj_num_pts[i], dtype=np.uint8))
+                query_instance_labels.append(j * np.ones(obj_num_pts[i], dtype=np.uint8))
+                query_pt_colors.append(obj_colors[i].reshape(1, 3).repeat(obj_num_pts[i], axis=0))
 
         # Move objects into a grid-like pattern
-        num_rows = int(np.sqrt(len(objects_list) - 1))
-        num_cols = int((np.ceil(len(objects_list) - 1) / num_rows))
+        num_rows = int(np.sqrt(num_scene_instances - 1))
+        num_cols = int((np.ceil(num_scene_instances - 1) / num_rows))
         spacing = self.plane_side_dim / (num_cols + 1)
 
         # Move the objects into a grid-like pattern with randomly sampled ordering for translation
-        ordering = np.arange(0, len(objects_list) + 1)
+        ordering = np.arange(num_scene_instances + 1)
         np.random.shuffle(ordering[1:])
-        for i, obj in enumerate(objects_list):
-            if i == 0:
-                continue
-            order_Idx = ordering[i]
-            row = (order_Idx - 1) % num_rows
-            col = (order_Idx - 1) // num_rows
+        for i in range(num_scene_instances):
+            order_idx = ordering[i]
+            row = (order_idx - 1) % num_rows
+            col = (order_idx - 1) // num_rows
             x = (col - num_cols / 2) * spacing
             y = (row - num_rows / 2) * spacing
-            obj.translate([x, y, 0])
+            
+            query_points[i] += np.array([x, y, 0])
 
-        # Create query point cloud
-        object_tensors_list = []
-        for object in objects_list:
-            object_tensor = torch.from_numpy(np.concatenate((np.asarray(object.points),
-                                                      np.asarray(object.normals)),
-                                                      axis=1)).type(torch.float32)
-            object_tensors_list.append(object_tensor)
-        query_pc = torch.cat(object_tensors_list, dim=0)
-
-        # Create labels and instance labels
-        labels = torch.from_numpy(np.asarray(labels_list)).type(torch.uint8)
-        instance_labels = torch.from_numpy(np.asarray(instance_labels_list)).type(torch.uint8)
+        # Create sample data
+        query_points = np.concatenate(query_points, axis=0)
+        query_normals = np.concatenate(query_normals, axis=0)
+        query_pc = torch.from_numpy(np.concatenate([query_points, query_normals], axis=-1))
+        class_labels = torch.from_numpy(np.concatenate(query_class_labels, axis=0))
+        instance_labels = torch.from_numpy(np.concatenate(query_instance_labels, axis=0))
 
         # Create support point cloud
-        support_pc = torch.from_numpy(np.concatenate((np.asarray(support_pcd.points),
-                                                      np.asarray(support_pcd.normals)),
-                                                      axis=1)).type(torch.float32)
-        
-        # Combine all outputs and then shuffle all the rows
-        combined = torch.cat((query_pc, labels.unsqueeze(1), instance_labels.unsqueeze(1)), dim=1)
-        combined = combined[torch.randperm(combined.shape[0])]
-        query_pc = combined[:, :6]
-        labels = combined[:, 6]
-        instance_labels = combined[:, 7]
-
-        # Shuffle support_pc by row separately as it has a different size
-        support_pc = support_pc[torch.randperm(support_pc.shape[0])]
+        support_pc = obj_meshes[0].sample_points_uniformly(self.SUPPORT_POINT_CLOUD_NUM_POINTS)
+        support_pc = np.concatenate([np.asarray(support_pc.points), np.asarray(support_pc.normals)], axis=-1)
+        support_pc = torch.from_numpy(support_pc).to(torch.float32)
 
         # Return query point cloud, support point cloud, labels, and instance labels as dictionary
-        data = {"query": query_pc,
-                "support_mask": support_pc,
-                "label": labels,
-                "instance_label": instance_labels}
+        data = {
+            "query": query_pc[:self.num_points],
+            "class_labels": class_labels[:self.num_points],
+            "instance_label": instance_labels[:self.num_points],
+            "support": support_pc
+        }
         
         if self.debug_mode is True:
-            data["debug_objects_list"] = objects_list
-            data["colors"] = colors
+            data["colors"] = np.concatenate(query_pt_colors, axis=0)[:self.num_points]
+            data["obj_classes"] = obj_classes
+            data["obj_counts"] = obj_counts
 
         return data
     
     def __len__(self):
         return 100
 
+
 if __name__ == "__main__":
-    # Create a dataset object
-    dataset = FindAnythingDataset(debug_mode=True)
+    # # Create a dataset object
+    # dataset = FindAnythingDataset(debug_mode=True)
 
-    # Visualize one point cloud from the dataset
-    data = dataset[0]
+    # # Visualize one point cloud from the dataset
+    # data = dataset[0]
+    # print("Total number of points (including plane):", len(data["query"]))
+    # for obj, obj_count in zip(data["obj_classes"], data["obj_counts"]):
+    #     print(f"class: {obj:<15} \t count: {obj_count:02d}")
 
-    # Create an open3D visualization window
-    vis = o3d.visualization.Visualizer()
-    vis.create_window()
-    opt = vis.get_render_option()
-    opt.show_coordinate_frame = True
-    opt.background_color = np.asarray([1, 1, 1])
+    # # Create an open3D visualization window
+    # vis = o3d.visualization.Visualizer()
+    # vis.create_window()
+    # opt = vis.get_render_option()
+    # opt.show_coordinate_frame = True
+    # opt.background_color = np.asarray([1, 1, 1])
 
-    total_num_points = 0
+    # point_cloud = data['query'].numpy()
 
-    # Render the scene
-    for obj, color in zip(data['debug_objects_list'], data["colors"]):
-        obj.paint_uniform_color(color)
-        vis.add_geometry(obj)
-        total_num_points += np.asarray(obj.points).shape[0] 
-    print("Total number of points (including plane):", total_num_points)
-    print("Number of objects (excluding plane):", len(data['debug_objects_list']) - 1)
-    vis.run()
-    vis.destroy_window()
+    # scene_pc = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(point_cloud[:, :3]))
+    # scene_pc.normals = o3d.utility.Vector3dVector(point_cloud[:, 3:])
+    # scene_pc.colors = o3d.utility.Vector3dVector(data["colors"])
+    
+    # vis.add_geometry(scene_pc)
+    # vis.run()
+    # vis.destroy_window()
+
+    import time
+    import torch
+    from torch.utils.data import DataLoader
+
+    dataset = FindAnythingDataset(split="train")
+    dataloader = DataLoader(
+        dataset=dataset,
+        batch_size=8,
+        num_workers=8,
+    )
+
+    start = time.time()
+    for d in dataloader:
+        print(time.time() - start)
+        start = time.time()

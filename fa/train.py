@@ -18,6 +18,7 @@ from fa.dgcnn import DGCNNSeg
 from fa.fusion import SimpleAggregator
 from fa.predictor import DGCNNPredHead
 from fa.model import FindAnything
+from fa.dataset import FindAnythingDataset
 from eval_utils import compute_iou
 
 
@@ -54,10 +55,10 @@ def evaluate_model(model: nn.Module, data_loader: DataLoader) -> Dict:
             scene_pointcloud=data['query'],
             template_pointcloud=data['support'],
         )
-        loss.append(F.binary_cross_entropy_with_logits(pred, data['support_mask'], reduction='mean').cpu().item())
+        loss.append(F.binary_cross_entropy_with_logits(pred, data['class_labels'], reduction='mean').cpu().item())
 
         pred_labels.append(pred.argmax(dim=-1).cpu().numpy())
-        true_labels.append(data['support_mask'].cpu().numpy())
+        true_labels.append(data['class_labels'].cpu().numpy())
     
     pred_labels = np.concatenate(pred_labels, axis=0)
     true_labels = np.concatenate(true_labels, axis=0)
@@ -87,8 +88,8 @@ def train_model(config: Dict) -> None:
         resume=None if config.use_checkpoint is None else "must"
     )
 
-    train_dataloader = None
-    test_dataloader = None
+    train_dataloader = FindAnythingDataset(split="train")
+    test_dataloader = FindAnythingDataset(split="test")
 
     feat_extractor = DGCNNSeg()
     if config.use_pretrained_dgcnn == "scannet":
@@ -149,7 +150,7 @@ def train_model(config: Dict) -> None:
                 template_pointcloud=data['support'],
             )
 
-            loss = loss_fn(pred, data['support_mask'])
+            loss = loss_fn(pred, data['class_labels'])
 
             loss.backward()
             optimizer.step()
