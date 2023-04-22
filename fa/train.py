@@ -35,13 +35,13 @@ config.aggr_feat_size = 128
 
 # Train
 config.epochs = 45
-config.batch_size = 4
-config.lr = 2e-4
-config.train_dataset_size = 1e3
+config.batch_size = 16
+config.lr = 5e-4
+config.train_dataset_size = 2e3
 
 # Test
 config.eval_freq = 1  # Epochs after which to eval model
-config.test_dataset_size = 100
+config.test_dataset_size = 200
 
 # Problem Framework
 config.num_query_points = 2048
