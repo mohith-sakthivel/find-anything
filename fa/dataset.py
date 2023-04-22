@@ -3,8 +3,6 @@ import random
 import matplotlib
 import numpy as np
 import open3d as o3d
-from tqdm import tqdm
-import time
 
 import torch
 from torch.utils.data import Dataset
@@ -61,9 +59,8 @@ class FindAnythingDataset(Dataset):
         self.max_scene_instances = 10
         self.min_target_instances = 1
         self.max_target_instances = 3
-        self.points_on_plane = 300
         self.object_size_range = [2, 3]
-        self.plane_side_dim = 15
+        self.plane_side_dim = 12
 
         self.cmap = matplotlib.colormaps['jet']
 
@@ -75,6 +72,68 @@ class FindAnythingDataset(Dataset):
                 os.path.join(root_dir, obj_class, "train")) if obj.endswith(".off")]
             self.test_obj_dict[obj_class] = [obj for obj in os.listdir(
                 os.path.join(root_dir, obj_class, "test")) if obj.endswith(".off")]
+            
+    def check_collision(self, bbox1, bbox2):
+        """Check if two bounding boxes are colliding in x-y plane"""
+        min_1 = bbox1.get_min_bound()
+        max_1 = bbox1.get_max_bound()
+        min_2 = bbox2.get_min_bound()
+        max_2 = bbox2.get_max_bound()
+
+        return not ((max_1[0] < min_2[0] or min_1[0] > max_2[0]) or \
+            (max_1[1] < min_2[1] or min_1[1] > max_2[1]))
+    
+    def create_plane(self, side_dim):
+        # Generate vertices of the plane centered at (0,0,0)
+        half_side = side_dim / 2.0
+        vertices = np.array([[-half_side, -half_side, 0],
+                            [half_side, -half_side, 0],
+                            [half_side, half_side, 0],
+                            [-half_side, half_side, 0]])
+        # Generate triangular faces of the plane
+        triangles = np.array([[0, 1, 2], [0, 2, 3]])
+        # Create an Open3D TriangleMesh object
+        plane = o3d.geometry.TriangleMesh()
+        plane.vertices = o3d.utility.Vector3dVector(vertices)
+        plane.triangles = o3d.utility.Vector3iVector(triangles)
+        plane.compute_vertex_normals()
+        return plane
+    
+    def random_positions(self, side_dim, obj_point_clouds, obj_counts, discretization_factor = 0.1):
+        # Create a 0.1 discretized boolean 2D array with the same side as the side_dim initialized to 1's
+        grid = np.ones((int(side_dim / discretization_factor), 
+                        int(side_dim / discretization_factor)), 
+                        dtype=bool)
+
+        # Sample index positions from 1's and set the surrounding area (max possible size * 1.5) to 0's
+        positions = []
+        for i in range(len(obj_point_clouds) - 1):
+            for j in range(obj_counts[i]):
+                # Find indices where the array has a value of 1
+                indices = np.argwhere(grid == True)
+
+                # If no indices with value 1 are found, return None
+                assert len(indices) > 0, "Error: No indices with value 1 found"
+
+                # Randomly select an index from the list of indices
+                sampled_index = indices[np.random.randint(0, len(indices))]
+
+                # Set the surrounding area to 0's, 0.75 x max_obj_side_dim in each direction
+                max_obj_side_dim = max(obj_point_clouds[i].get_max_bound() - obj_point_clouds[i].get_min_bound())
+                offset = int(np.ceil(max_obj_side_dim * 0.75 / discretization_factor))
+                min_dim0 = max(0, sampled_index[0] - offset)
+                max_min0 = min(grid.shape[0], sampled_index[0] + offset)
+                min_dim1 = max(0, sampled_index[1] - offset)
+                max_dim1 = min(grid.shape[1], sampled_index[1] + offset)
+                grid[min_dim0:max_min0, min_dim1:max_dim1] = False
+
+                # Calculate actual 2D position
+                position = np.array([sampled_index[0] * 0.1 - side_dim / 2.0, 
+                                    sampled_index[1] * 0.1 - side_dim / 2.0, 
+                                    0])
+                positions.append(position)
+        return positions
+
 
     def __getitem__(self, idx):
         """
@@ -122,8 +181,7 @@ class FindAnythingDataset(Dataset):
             obj_classes.append(self.obj_classes[k])
 
         # Add a color for each class
-        obj_colors = [np.array(self.cmap(i))[:3] for i in np.linspace(0, 1, num=len(obj_classes))]
-
+        obj_colors = [np.array(self.cmap(i))[:3] for i in np.linspace(0, 1, num=len(obj_classes) + 1)]
         for i in range(len(obj_classes)):
             while True:
                 if self.split == "train":
@@ -146,7 +204,8 @@ class FindAnythingDataset(Dataset):
             scale = random.uniform(self.object_size_range[0], self.object_size_range[1])
 
             # Scale the object to be the randomized scaling factor
-            mesh.scale(scale / np.max(mesh.get_oriented_bounding_box(robust=True).extent), center=mesh.get_center())
+            mesh_bbox = mesh.get_axis_aligned_bounding_box()
+            mesh.scale(scale / np.max(mesh_bbox.get_max_bound() - mesh_bbox.get_min_bound()), center=mesh.get_center())
             obj_surface_areas.append(mesh.get_surface_area())
             
             # Get the bounding box dimensions and center
@@ -162,6 +221,14 @@ class FindAnythingDataset(Dataset):
             mesh.compute_vertex_normals()
             obj_meshes.append(mesh)
 
+        # Create a ground plane
+        plane = self.create_plane(self.plane_side_dim)
+        obj_classes.append('plane')
+        obj_class_ids.append(0)
+        obj_counts.append(1)
+        obj_meshes.append(plane)
+        obj_surface_areas.append(self.plane_side_dim**2)
+
         obj_surface_areas = np.array(obj_surface_areas)
         obj_counts = np.array(obj_counts)
 
@@ -169,7 +236,7 @@ class FindAnythingDataset(Dataset):
         obj_num_pts = ((obj_surface_areas / total_area) * self.num_query_points).astype(int)
         # Add residual points from integer division to last object
         obj_num_pts[-1] += (self.num_query_points - np.sum(obj_num_pts * obj_counts))
-
+        
         obj_point_clouds = []
         for i in range(len(obj_meshes)):
             if (obj_counts[i] == 1):
@@ -186,21 +253,29 @@ class FindAnythingDataset(Dataset):
 
         for i in range(len(obj_classes)):
             for j in range(obj_counts[i]):
+                if i != len(obj_classes) - 1:
+                    # Define a random orientation about the z-axis
+                    z_rot = random.uniform(0, 360)
+                    rotation = o3d.geometry.get_rotation_matrix_from_xyz([0, 0, z_rot])
 
-                # Define a random position and orientation for the object - no randomness in position currently
-                z_rot = random.uniform(0, 360)
-                rotation = o3d.geometry.get_rotation_matrix_from_xyz([0, 0, z_rot])
+                    # Create transformation matrix
+                    transform = np.zeros((4, 4))
+                    transform[:3, :3] = rotation
+                    transform[3, 3] = 1
 
-                # Create transformation matrix
-                transform = np.zeros((4, 4))
-                transform[:3, :3] = rotation
-                transform[3, 3] = 1
-
-                # Apply transformation to the point cloud
-                transformed_pc = obj_point_clouds[i].transform(transform)
+                    # Apply transformation to the point cloud
+                    transformed_pc = obj_point_clouds[i].transform(transform)
+                else:
+                    transformed_pc = obj_point_clouds[i]
 
                 points = np.asarray(transformed_pc.points, dtype=np.float32)
                 normals = np.asarray(transformed_pc.normals, dtype=np.float32)
+
+                # If plane, set all normals to pointing straight up
+                if i == len(obj_classes) - 1:
+                    normals = np.zeros_like(normals)
+                    normals[:, 2] = 1
+
                 if obj_counts[i] > 1:
                     indices = np.random.choice(int(self.SAMPLING_UPSCALE_FACTOR * obj_num_pts[i]), obj_num_pts[i], replace=False)
                     points = points[indices]
@@ -215,22 +290,11 @@ class FindAnythingDataset(Dataset):
                 query_instance_labels.append(j * np.ones(obj_num_pts[i], dtype=np.float32))
                 query_pt_colors.append(obj_colors[i].reshape(1, 3).repeat(obj_num_pts[i], axis=0))
 
-        # Move objects into a grid-like pattern
-        num_rows = int(np.sqrt(num_scene_instances - 1))
-        num_cols = int((np.ceil(num_scene_instances - 1) / num_rows))
-        spacing = self.plane_side_dim / (num_cols + 1)
-
-        # Move the objects into a grid-like pattern with randomly sampled ordering for translation
-        ordering = np.arange(num_scene_instances + 1)
-        np.random.shuffle(ordering[1:])
-        for i in range(num_scene_instances):
-            order_idx = ordering[i]
-            row = (order_idx - 1) % num_rows
-            col = (order_idx - 1) // num_rows
-            x = (col - num_cols / 2) * spacing
-            y = (row - num_rows / 2) * spacing
-            
-            query_points[i] += np.array([x, y, 0])
+        # Randomly sample positions for all objects
+        half_side_with_offset = self.plane_side_dim - self.object_size_range[1]
+        random_positions = self.random_positions(half_side_with_offset, obj_point_clouds, obj_counts)
+        for i in range(len(query_points) - 1):
+            query_points[i] += random_positions[i]
 
         # Create sample data
         query_points = np.concatenate(query_points, axis=0)
@@ -264,14 +328,16 @@ class FindAnythingDataset(Dataset):
 
 
 if __name__ == "__main__":
-    # # Create a dataset object
-    # dataset = FindAnythingDataset(debug_mode=True)
+    # Create a dataset object
+    dataset = FindAnythingDataset(debug_mode=True)
 
-    # # Visualize one point cloud from the dataset
-    # data = dataset[0]
-    # print("Total number of points (including plane):", len(data["query"]))
-    # for obj, obj_count in zip(data["obj_classes"], data["obj_counts"]):
-    #     print(f"class: {obj:<15} \t count: {obj_count:02d}")
+    # Visualize one point cloud from the dataset
+    data = dataset[0]
+    print("Total number of points (including plane):", len(data["query"]))
+    for obj, obj_count in zip(data["obj_classes"], data["obj_counts"]):
+        print(f"class: {obj:<15} \t count: {obj_count:02d}")
+
+    ### Visualize with Open3D ###
 
     # # Create an open3D visualization window
     # vis = o3d.visualization.Visualizer()
@@ -280,28 +346,37 @@ if __name__ == "__main__":
     # opt.show_coordinate_frame = True
     # opt.background_color = np.asarray([1, 1, 1])
 
-    # point_cloud = data['query'].numpy()
-
     # scene_pc = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(point_cloud[:, :3]))
     # scene_pc.normals = o3d.utility.Vector3dVector(point_cloud[:, 3:])
     # scene_pc.colors = o3d.utility.Vector3dVector(data["colors"])
-    
+
     # vis.add_geometry(scene_pc)
     # vis.run()
     # vis.destroy_window()
 
+    ### Visualize with matplotlib ###
+
+    # # Visualize the point cloud with matplotlib without Axes3D
+    # point_cloud = data['query'].numpy()
+    # fig = plt.figure()
+    # ax = fig.add_subplot(projection='3d')
+    # ax.scatter(point_cloud[:, 0], point_cloud[:, 1], point_cloud[:, 2], s=1)
+    # plt.show()
+
+    ### Test time ###
     import time
     import torch
+    from tqdm import tqdm
     from torch.utils.data import DataLoader
 
     dataset = FindAnythingDataset(split="train")
     dataloader = DataLoader(
         dataset=dataset,
-        batch_size=8,
-        num_workers=8,
+        batch_size=16,
+        num_workers=16,
     )
 
     start = time.time()
-    for _ in dataloader:
+    for data in tqdm(dataloader, total=len(dataloader) // 16):
         print(time.time() - start)
-        start = time.time() 
+        start = time.time()
