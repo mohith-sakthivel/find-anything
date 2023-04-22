@@ -1,3 +1,4 @@
+import sys
 import tqdm
 import datetime
 import argparse
@@ -13,6 +14,7 @@ import torch.optim as optim
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 
+sys.path.append(".")
 from fa.utils import AttrDict, save_checkpoint, seed_everything
 from fa.dgcnn import DGCNNSeg
 from fa.fusion import SimpleAggregator
