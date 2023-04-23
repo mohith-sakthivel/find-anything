@@ -34,10 +34,12 @@ config.use_pretrained_dgcnn = None
 config.aggr_feat_size = 128
 
 # Train
-config.epochs = 100
-config.batch_size = 16
+config.epochs = 250
+config.batch_size = 32
 config.lr = 5e-4
 config.train_dataset_size = 2e3
+config.gamma = 0.5
+config.step_size = 100
 
 # Test
 config.eval_freq = 1  # Epochs after which to eval model
@@ -70,11 +72,11 @@ def evaluate_model(model: nn.Module, data_loader: DataLoader, config: Dict) -> D
 
         pred = model(
             scene_pointcloud=data['query'],
-            template_pointcloud=data['support'],
+            template_pointcloud=None,
         )
-        loss.append(F.binary_cross_entropy_with_logits(pred, data['class_labels'], reduction='mean').cpu().item())
+        loss.append(F.cross_entropy(pred, data['class_labels'], reduction='mean').cpu().item())
 
-        pred_labels.append((pred > config.pred_threshold).to(torch.float32).cpu().numpy())
+        pred_labels.append((pred.argmax(dim=-2)).to(torch.float32).cpu().numpy())
         true_labels.append(data['class_labels'].cpu().numpy())
     
     pred_labels = np.concatenate(pred_labels, axis=0)
@@ -99,7 +101,7 @@ def train_model(config: Dict) -> None:
         run_id = config.checkpoint
 
     wandb_run = wandb.init(
-        project="find-anything",
+        project="semantic-segmentation",
         config=config,
         id=run_id,
         resume=None if config.checkpoint is None else "must",
@@ -132,23 +134,23 @@ def train_model(config: Dict) -> None:
         num_workers=config.num_workers,
     )
 
-    feat_extractor = DGCNNSeg()
+    feat_extractor = DGCNNSeg(num_classes=test_dataset.num_classes)
     if config.use_pretrained_dgcnn == "scannet":
         feat_extractor.load_state_dict(torch.load("pretrained_weights/scannet.pth"))
     elif config.use_pretrained_dgcnn == "s3dis":
         feat_extractor.load_state_dict(torch.load("pretrained_weights/s3dis_model_6.pth"))
 
-    feat_agg = SimpleAggregator(
-        scene_feat_dim=feat_extractor.feat_dim,
-        template_feat_dim=feat_extractor.feat_dim,
-        project_dim=config.aggr_feat_size
-    )
-    pred_head = DGCNNPredHead(in_dim=feat_agg.out_dim)
+    # feat_agg = SimpleAggregator(
+    #     scene_feat_dim=feat_extractor.feat_dim,
+    #     template_feat_dim=feat_extractor.feat_dim,
+    #     project_dim=config.aggr_feat_size
+    # )
+    # pred_head = DGCNNPredHead(in_dim=feat_agg.out_dim)
 
     model = FindAnything(
         scene_feat_extractor=feat_extractor,
-        fusion_module=feat_agg,
-        pred_head=pred_head,
+        fusion_module=nn.Identity(),
+        pred_head=nn.Identity(),
         template_feat_extractor=None,
         use_common_feat_extractor=True
     )
@@ -156,8 +158,8 @@ def train_model(config: Dict) -> None:
     optimizer = optim.Adam(model.parameters(), lr=config.lr, weight_decay=1e-4)
     scheduler = optim.lr_scheduler.StepLR(
         optimizer=optimizer,
-        step_size=20,
-        gamma=0.5
+        step_size=config.step_size,
+        gamma=config.gamma
     )
     start_epoch = 0
     best_iou = -1
@@ -170,7 +172,7 @@ def train_model(config: Dict) -> None:
         scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
         start_epoch = checkpoint["epoch"]
 
-    loss_fn = nn.BCEWithLogitsLoss()
+    loss_fn = nn.CrossEntropyLoss()
     model.to(config.device)
 
     for epoch in range(start_epoch, config.epochs):
@@ -187,7 +189,7 @@ def train_model(config: Dict) -> None:
 
             pred = model(
                 scene_pointcloud=data['query'],
-                template_pointcloud=data['support'],
+                template_pointcloud=None,
             )
 
             loss = loss_fn(pred, data['class_labels'])

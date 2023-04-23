@@ -59,6 +59,7 @@ class FindAnythingDataset(Dataset):
 
         # Get all types of objects
         self.obj_classes = [obj_class for obj_class in os.listdir(root_dir)]
+        self.num_classes = len(self.obj_classes) + 1
 
         # Hyperparameters
         self.min_scene_instances = 6
@@ -232,7 +233,7 @@ class FindAnythingDataset(Dataset):
         # Create a ground plane
         plane = self.create_plane(self.plane_side_dim)
         obj_classes.append('plane')
-        obj_class_ids.append(0)
+        obj_class_ids.append(self.num_classes-1)
         obj_counts.append(1)
         obj_meshes.append(plane)
         obj_surface_areas.append(torch.sum(plane.faces_areas_packed()))
@@ -299,10 +300,7 @@ class FindAnythingDataset(Dataset):
                 
                 query_points.append(points)
                 query_normals.append(normals)
-                if i == 0:
-                    query_class_labels.append(np.ones(obj_num_pts[i], dtype=np.float32))
-                else:
-                    query_class_labels.append(np.zeros(obj_num_pts[i], dtype=np.float32))
+                query_class_labels.append(obj_class_ids[i] * np.ones(obj_num_pts[i], dtype=np.int64))
                 query_instance_labels.append(j * np.ones(obj_num_pts[i], dtype=np.float32))
                 query_pt_colors.append(obj_colors[i].reshape(1, 3).repeat(obj_num_pts[i], axis=0))
 
@@ -319,24 +317,24 @@ class FindAnythingDataset(Dataset):
         class_labels = torch.from_numpy(np.concatenate(query_class_labels, axis=0))
         instance_labels = torch.from_numpy(np.concatenate(query_instance_labels, axis=0))
 
-        # Create support point cloud
-        sampled_pc = sample_points_from_meshes(obj_meshes[0], self.num_support_points, return_normals=True)
-        support_pc = np.concatenate([np.asarray(sampled_pc[0].squeeze()), 
-                                     np.asarray(sampled_pc[1].squeeze())], 
-                                     axis=-1)
-        support_pc = torch.from_numpy(support_pc).to(torch.float32)
+        # # Create support point cloud
+        # sampled_pc = sample_points_from_meshes(obj_meshes[0], self.num_support_points, return_normals=True)
+        # support_pc = np.concatenate([np.asarray(sampled_pc[0].squeeze()), 
+        #                              np.asarray(sampled_pc[1].squeeze())], 
+        #                              axis=-1)
+        # support_pc = torch.from_numpy(support_pc).to(torch.float32)
 
         # Normalize Data
 
         query_pc = (query_pc - self.data_mean) / self.data_std
-        support_pc = (support_pc - self.data_mean) / self.data_std
+        # support_pc = (support_pc - self.data_mean) / self.data_std
 
         # Return query point cloud, support point cloud, labels, and instance labels as dictionary
         data = {
             "query": query_pc[:self.num_query_points],
             "class_labels": class_labels[:self.num_query_points],
             "instance_label": instance_labels[:self.num_query_points],
-            "support": support_pc
+            # "support": support_pc
         }
         
         if self.debug_mode is True:

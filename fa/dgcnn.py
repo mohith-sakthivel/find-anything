@@ -137,6 +137,6 @@ class DGCNNSeg(nn.Module):
         x = self.conv8(x)
         if self.num_classes is not None:
             x = self.dp(x)
-            x = self.conv9(x).squeeze()
+            x = self.conv9(x)
 
         return x

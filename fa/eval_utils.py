@@ -2,8 +2,12 @@ import numpy as np
 
 
 def compute_iou(pred_label: np.ndarray, actual_label: np.ndarray) -> np.ndarray:
-    intersection = np.logical_and(pred_label == 1, actual_label == 1).sum(axis=-1)
-    union = np.logical_or(pred_label == 1, actual_label == 1).sum(axis=-1)
-    iou = np.mean(intersection / union)
+    num_classes = int(max(pred_label.max(), actual_label.max()))
+    I_all = np.zeros(num_classes)
+    U_all = np.zeros(num_classes)
 
-    return iou
+    for i in range(num_classes):
+        I_all[i] = np.logical_and(pred_label == i, actual_label == i).sum()
+        U_all[i] = np.logical_or(pred_label == 1, actual_label == 1).sum()
+
+    return np.mean(I_all / U_all)

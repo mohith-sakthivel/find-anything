@@ -29,12 +29,12 @@ class FindAnything(nn.Module):
         self, scene_pointcloud: torch.Tensor, template_pointcloud: torch.Tensor
     ) -> torch.Tensor:
         scene_feat = self.scene_feat_extractor(scene_pointcloud)
-        if self.use_common_feat_extractor:
-            template_feat = self.scene_feat_extractor(template_pointcloud)
-        else:
-            template_feat = self.template_feat_extractor(template_pointcloud)
+        # if self.use_common_feat_extractor:
+        #     template_feat = self.scene_feat_extractor(template_pointcloud)
+        # else:
+        #     template_feat = self.template_feat_extractor(template_pointcloud)
 
-        fused_feat = self.fusion_module(scene_feat, template_feat)
-        preds = self.pred_head(fused_feat)
+        # fused_feat = self.fusion_module(scene_feat, template_feat)
+        # preds = self.pred_head(fused_feat)
 
-        return preds
+        return scene_feat
