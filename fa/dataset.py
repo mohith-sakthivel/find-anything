@@ -327,7 +327,6 @@ class FindAnythingDataset(Dataset):
         support_pc = torch.from_numpy(support_pc).to(torch.float32)
 
         # Normalize Data
-
         query_pc = (query_pc - self.data_mean) / self.data_std
         support_pc = (support_pc - self.data_mean) / self.data_std
 

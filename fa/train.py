@@ -19,7 +19,7 @@ from fa.fusion import SimpleAggregator
 from fa.predictor import DGCNNPredHead
 from fa.model import FindAnything
 from fa.dataset import FindAnythingDataset
-from fa.eval_utils import compute_iou
+from fa.eval_utils import compute_iou, get_pc_viz
 
 
 config = AttrDict()
@@ -63,6 +63,7 @@ def evaluate_model(model: nn.Module, data_loader: DataLoader, config: Dict) -> D
     true_labels = []
     pred_labels = []
     loss = []
+    first_pass = True
 
     for data in tqdm.tqdm(iterable=data_loader, desc=f"Test", total=len(data_loader)):
 
@@ -74,9 +75,14 @@ def evaluate_model(model: nn.Module, data_loader: DataLoader, config: Dict) -> D
         )
         loss.append(F.binary_cross_entropy_with_logits(pred, data['class_labels'], reduction='mean').cpu().item())
 
-        pred_labels.append((pred > config.pred_threshold).to(torch.float32).cpu().numpy())
+        pred_thresh = (pred > config.pred_threshold).to(torch.float32)
+        pred_labels.append(pred_thresh.cpu().numpy())
         true_labels.append(data['class_labels'].cpu().numpy())
-    
+
+        if first_pass:
+            query_viz, gt_viz, support_viz = get_pc_viz(data, pred_thresh)
+            first_pass = False
+            
     pred_labels = np.concatenate(pred_labels, axis=0)
     true_labels = np.concatenate(true_labels, axis=0)
 
@@ -84,7 +90,10 @@ def evaluate_model(model: nn.Module, data_loader: DataLoader, config: Dict) -> D
         "loss": np.mean(loss),
         "accuracy": accuracy_score(true_labels.reshape(-1), pred_labels.reshape(-1)),
         "balanced_accuracy": balanced_accuracy_score(true_labels.reshape(-1), pred_labels.reshape(-1)),
-        "iou": compute_iou(pred_labels, true_labels)
+        "iou": compute_iou(pred_labels, true_labels),
+        "query point cloud": query_viz,
+        "gt_point_cloud": gt_viz,
+        "support point cloud": support_viz
     }
 
     return metrics
