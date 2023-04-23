@@ -34,4 +34,4 @@ class DGCNNPredHead(nn.Module):
         x = self.dp(x)
         x = self.conv3(x)
 
-        return x.squeeze()
+        return x.squeeze(dim=-2)

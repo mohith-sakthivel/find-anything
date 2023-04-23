@@ -34,7 +34,7 @@ config.use_pretrained_dgcnn = None
 config.aggr_feat_size = 128
 
 # Train
-config.epochs = 45
+config.epochs = 100
 config.batch_size = 16
 config.lr = 5e-4
 config.train_dataset_size = 2e3
@@ -189,9 +189,6 @@ def train_model(config: Dict) -> None:
                 scene_pointcloud=data['query'],
                 template_pointcloud=data['support'],
             )
-
-            if pred.dim == 1:
-                pred = pred.unsqueeze(0)
 
             loss = loss_fn(pred, data['class_labels'])
 
