@@ -232,7 +232,7 @@ class FindAnythingDataset(Dataset):
         # Create a ground plane
         plane = self.create_plane(self.plane_side_dim)
         obj_classes.append('plane')
-        obj_class_ids.append(0)
+        obj_class_ids.append(len(self.obj_classes))
         obj_counts.append(1)
         obj_meshes.append(plane)
         obj_surface_areas.append(torch.sum(plane.faces_areas_packed()))

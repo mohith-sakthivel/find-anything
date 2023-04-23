@@ -27,17 +27,19 @@ config = AttrDict()
 # Setup
 config.seed = 0
 config.device = "cuda"
-config.num_workers = 16
+config.num_workers = 20
 
 # Model
 config.use_pretrained_dgcnn = None
 config.aggr_feat_size = 128
 
 # Train
-config.epochs = 100
-config.batch_size = 16
+config.epochs = 250
+config.batch_size = 20
 config.lr = 5e-4
 config.train_dataset_size = 2e3
+config.gamma = 0.5
+config.step_size = 50
 
 # Test
 config.eval_freq = 1  # Epochs after which to eval model
@@ -165,8 +167,8 @@ def train_model(config: Dict) -> None:
     optimizer = optim.Adam(model.parameters(), lr=config.lr, weight_decay=1e-4)
     scheduler = optim.lr_scheduler.StepLR(
         optimizer=optimizer,
-        step_size=20,
-        gamma=0.5
+        step_size=config.step_size,
+        gamma=config.gamma
     )
     start_epoch = 0
     best_iou = -1
