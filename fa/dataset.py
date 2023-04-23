@@ -66,7 +66,7 @@ class FindAnythingDataset(Dataset):
         self.min_target_instances = 1
         self.max_target_instances = 1
         self.object_size_range = [2, 3]
-        self.plane_side_dim = 6.5
+        self.plane_side_dim = 8
         self.degen_volume_sa_ratio = 200
         self.degen_max_min_dim_ratio = 15
 
