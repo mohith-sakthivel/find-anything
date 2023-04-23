@@ -358,23 +358,6 @@ if __name__ == "__main__":
     for obj, obj_count in zip(data["obj_classes"], data["obj_counts"]):
         print(f"class: {obj:<15} \t count: {obj_count:02d}")
 
-    ### Visualize with Open3D ###
-
-    # # Create an open3D visualization window
-    # vis = o3d.visualization.Visualizer()
-    # vis.create_window()
-    # opt = vis.get_render_option()
-    # opt.show_coordinate_frame = True
-    # opt.background_color = np.asarray([1, 1, 1])
-
-    # scene_pc = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(point_cloud[:, :3]))
-    # scene_pc.normals = o3d.utility.Vector3dVector(point_cloud[:, 3:])
-    # scene_pc.colors = o3d.utility.Vector3dVector(data["colors"])
-
-    # vis.add_geometry(scene_pc)
-    # vis.run()
-    # vis.destroy_window()
-
     # ### Visualize with matplotlib ###
     # import matplotlib.pyplot as plt
 
