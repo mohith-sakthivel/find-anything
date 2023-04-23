@@ -326,8 +326,8 @@ class FindAnythingDataset(Dataset):
         # Normalize point cloud data using MinMaxScaler
         scaler = MinMaxScaler()
 
-        query_pc = scaler.fit_transform(query_pc)
-        support_pc = scaler.fit_transform(support_pc)
+        query_pc = torch.from_numpy(scaler.fit_transform(query_pc)).to(torch.float32)
+        support_pc = torch.from_numpy(scaler.fit_transform(support_pc)).to(torch.float32)
 
         # Return query point cloud, support point cloud, labels, and instance labels as dictionary
         data = {
