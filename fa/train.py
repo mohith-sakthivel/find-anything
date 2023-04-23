@@ -36,12 +36,12 @@ config.aggr_feat_size = 128
 # Train
 config.epochs = 45
 config.batch_size = 16
-config.lr = 1e-3
-config.train_dataset_size = 2e4
+config.lr = 5e-4
+config.train_dataset_size = 2e3
 
 # Test
 config.eval_freq = 1  # Epochs after which to eval model
-config.test_dataset_size = 2000
+config.test_dataset_size = 200
 
 # Problem Framework
 config.num_query_points = 2048
@@ -176,8 +176,6 @@ def train_model(config: Dict) -> None:
     for epoch in range(start_epoch, config.epochs):
         model.train()
 
-        wandb.log({"train": {"epoch": epoch, "lr": scheduler.get_last_lr()[0]}}, commit=False)
-
         for iter, data in tqdm.tqdm(
             iterable=enumerate(train_dataloader),
             desc=f"Epoch {epoch:04d}/{config.epochs}",
@@ -202,7 +200,11 @@ def train_model(config: Dict) -> None:
 
             if ((iter + 1) % config.log_freq == 0):
                 tqdm.tqdm.write(f"Loss: {loss.detach().cpu().item():.6f}")
-                wandb.log({"train": {"loss": loss.detach().cpu().item()}})
+                wandb.log({"train": {
+                    "loss": loss.detach().cpu().item(),
+                    "epoch": epoch,
+                    "lr": scheduler.get_last_lr()[0]
+                }})
         
         scheduler.step() 
 

@@ -43,7 +43,7 @@ class FindAnythingDataset(Dataset):
             self,
             root_dir: str = "data/ModelNet",
             split: str = "train",
-            dataset_size: int = 1e6,
+            dataset_size: int = 1e4,
             num_query_points: int = 2048,
             num_support_points: int = 1024,
             debug_mode: int = False
@@ -154,7 +154,7 @@ class FindAnythingDataset(Dataset):
         target_class_id = np.random.randint(low=0, high=len(self.obj_classes))
 
         # Randomly select the number of classes to include in the scene
-        num_scene_instances = np.random.randint(self.min_scene_instances, self.max_scene_instances)
+        num_scene_instances = np.random.randint(low=self.min_scene_instances, high=self.max_scene_instances + 1)
 
         # Randomly select the number of target instances to include in the scene
         num_target_instances = random.randint(self.min_target_instances, min(self.max_target_instances, num_scene_instances))
