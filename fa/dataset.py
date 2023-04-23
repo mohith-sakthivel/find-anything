@@ -10,7 +10,6 @@ import pytorch3d.transforms as t3d
 
 import torch
 from torch.utils.data import Dataset
-from sklearn.preprocessing import MinMaxScaler
 
 class FindAnythingDataset(Dataset):
     """ Download data from 
@@ -38,6 +37,8 @@ class FindAnythingDataset(Dataset):
     """
 
     SAMPLING_UPSCALE_FACTOR = 1.25
+    DATA_MEAN = [0, 0, 1.5, 0, 0, 0]
+    DATA_STD = [6, 6, 1.5, 1, 1, 1]
 
     def __init__(
             self,
@@ -70,6 +71,8 @@ class FindAnythingDataset(Dataset):
         self.degen_max_min_dim_ratio = 15
 
         self.cmap = matplotlib.colormaps['jet']
+        self.data_mean = torch.tensor(self.DATA_MEAN, dtype=torch.float32)
+        self.data_std = torch.tensor(self.DATA_STD, dtype=torch.float32)
 
         # Get list of all objects separated by train and test per class
         self.train_obj_dict = dict()
@@ -323,11 +326,10 @@ class FindAnythingDataset(Dataset):
                                      axis=-1)
         support_pc = torch.from_numpy(support_pc).to(torch.float32)
 
-        # Normalize point cloud data using MinMaxScaler
-        scaler = MinMaxScaler()
+        # Normalize Data
 
-        query_pc = torch.from_numpy(scaler.fit_transform(query_pc)).to(torch.float32)
-        support_pc = torch.from_numpy(scaler.fit_transform(support_pc)).to(torch.float32)
+        query_pc = (query_pc - self.data_mean) / self.data_std
+        support_pc = (support_pc - self.data_mean) / self.data_std
 
         # Return query point cloud, support point cloud, labels, and instance labels as dictionary
         data = {
@@ -370,18 +372,16 @@ if __name__ == "__main__":
 
     # ### Test time ###
     # import time
-    # import torch
-    # from tqdm import tqdm
     # from torch.utils.data import DataLoader
 
     # dataset = FindAnythingDataset(split="train")
     # dataloader = DataLoader(
     #     dataset=dataset,
-    #     batch_size=16,
-    #     num_workers=16,
+    #     batch_size=8,
+    #     num_workers=8,
     # )
 
     # start = time.time()
-    # for data in tqdm(dataloader, total=len(dataloader)):
+    # for data in dataloader:
     #     print(time.time() - start)
     #     start = time.time()

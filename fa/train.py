@@ -27,7 +27,7 @@ config = AttrDict()
 # Setup
 config.seed = 0
 config.device = "cuda"
-config.num_workers = 8
+config.num_workers = 16
 
 # Model
 config.use_pretrained_dgcnn = None
