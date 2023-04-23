@@ -1,4 +1,3 @@
-import sys
 import tqdm
 import datetime
 import argparse
@@ -14,7 +13,6 @@ import torch.optim as optim
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 
-sys.path.append(".")
 from fa.utils import AttrDict, save_checkpoint, seed_everything
 from fa.dgcnn import DGCNNSeg
 from fa.fusion import SimpleAggregator
@@ -39,7 +37,7 @@ config.aggr_feat_size = 128
 config.epochs = 45
 config.batch_size = 16
 config.lr = 1e-3
-config.train_dataset_size = 1e6
+config.train_dataset_size = 2e4
 
 # Test
 config.eval_freq = 1  # Epochs after which to eval model
@@ -193,6 +191,9 @@ def train_model(config: Dict) -> None:
                 scene_pointcloud=data['query'],
                 template_pointcloud=data['support'],
             )
+
+            if pred.dim == 1:
+                pred = pred.unsqueeze(0)
 
             loss = loss_fn(pred, data['class_labels'])
 
