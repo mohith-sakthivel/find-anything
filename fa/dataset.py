@@ -61,12 +61,12 @@ class FindAnythingDataset(Dataset):
         self.obj_classes = [obj_class for obj_class in os.listdir(root_dir)]
 
         # Hyperparameters
-        self.min_scene_instances = 6
-        self.max_scene_instances = 10
+        self.min_scene_instances = 2
+        self.max_scene_instances = 2
         self.min_target_instances = 1
-        self.max_target_instances = 3
+        self.max_target_instances = 1
         self.object_size_range = [2, 3]
-        self.plane_side_dim = 13
+        self.plane_side_dim = 6.5
         self.degen_volume_sa_ratio = 200
         self.degen_max_min_dim_ratio = 15
 
