@@ -40,13 +40,14 @@ config.lr = 5e-4
 config.train_dataset_size = 2e3
 config.gamma = 0.5
 config.step_size = 50
+config.pos_sample_weight = 2
 
 # Test
 config.eval_freq = 1  # Epochs after which to eval model
 config.test_dataset_size = 200
 
 # Problem Framework
-config.num_query_points = 2048
+config.num_query_points = 4096
 config.num_support_points = 1024
 config.pred_threshold = 0.5
 
@@ -75,7 +76,7 @@ def evaluate_model(model: nn.Module, data_loader: DataLoader, config: Dict) -> D
             scene_pointcloud=data['query'],
             template_pointcloud=data['support'],
         )
-        loss.append(F.binary_cross_entropy_with_logits(pred, data['class_labels'], reduction='mean').cpu().item())
+        loss.append(F.binary_cross_entropy_with_logits(pred, data['class_labels'], reduction='mean', pos_weight=    loss_fn = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([config.pos_sample_weight])).cpu().item())
 
         pred_thresh = (pred > config.pred_threshold).to(torch.float32)
         pred_labels.append(pred_thresh.cpu().numpy())
@@ -144,14 +145,11 @@ def train_model(config: Dict) -> None:
     )
 
     feat_extractor = DGCNNSeg()
-    if config.use_pretrained_dgcnn == "scannet":
-        feat_extractor.load_state_dict(torch.load("pretrained_weights/scannet.pth"))
-    elif config.use_pretrained_dgcnn == "s3dis":
-        feat_extractor.load_state_dict(torch.load("pretrained_weights/s3dis_model_6.pth"))
+    template_feat_extractor = DGCNNSeg()
 
     feat_agg = SimpleAggregator(
         scene_feat_dim=feat_extractor.feat_dim,
-        template_feat_dim=feat_extractor.feat_dim,
+        template_feat_dim=template_feat_extractor.feat_dim,
         project_dim=config.aggr_feat_size
     )
     pred_head = DGCNNPredHead(in_dim=feat_agg.out_dim)
@@ -160,7 +158,7 @@ def train_model(config: Dict) -> None:
         scene_feat_extractor=feat_extractor,
         fusion_module=feat_agg,
         pred_head=pred_head,
-        template_feat_extractor=None,
+        template_feat_extractor=template_feat_extractor,
         use_common_feat_extractor=True
     )
 
@@ -181,7 +179,7 @@ def train_model(config: Dict) -> None:
         scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
         start_epoch = checkpoint["epoch"]
 
-    loss_fn = nn.BCEWithLogitsLoss()
+    loss_fn = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([config.pos_sample_weight]))
     model.to(config.device)
 
     for epoch in range(start_epoch, config.epochs):

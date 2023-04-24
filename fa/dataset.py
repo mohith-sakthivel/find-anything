@@ -37,6 +37,7 @@ class FindAnythingDataset(Dataset):
     """
 
     SAMPLING_UPSCALE_FACTOR = 1.25
+    PLANE_DOWNSCALE_FACTOR = 2
     DATA_MEAN = [0, 0, 1.5, 0, 0, 0]
     DATA_STD = [6, 6, 1.5, 1, 1, 1]
 
@@ -235,7 +236,7 @@ class FindAnythingDataset(Dataset):
         obj_class_ids.append(len(self.obj_classes))
         obj_counts.append(1)
         obj_meshes.append(plane)
-        obj_surface_areas.append(torch.sum(plane.faces_areas_packed()))
+        obj_surface_areas.append(torch.sum(plane.faces_areas_packed()) / self.PLANE_DOWNSCALE_FACTOR)
 
         obj_surface_areas = np.array(obj_surface_areas)
         obj_counts = np.array(obj_counts)
