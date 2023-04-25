@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
 """
 Code adapted from https://github.com/antao97/dgcnn.pytorch
 """
