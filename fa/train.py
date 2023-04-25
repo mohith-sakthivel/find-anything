@@ -153,11 +153,13 @@ def train_model(config: Dict) -> None:
         template_feat_dim=template_feat_extractor.feat_dim
     )
 
+    pred_head = DGCNNPredHead(in_dim=feat_agg.out_dim)
+
     model = FindAnything(
         scene_feat_extractor=feat_extractor,
         template_feat_extractor=template_feat_extractor,
         fusion_module=feat_agg,
-        pred_head=nn.Identity()
+        pred_head=pred_head,
     )
 
     optimizer = optim.Adam(model.parameters(), lr=config.lr, weight_decay=1e-4)

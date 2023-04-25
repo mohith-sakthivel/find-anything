@@ -2,6 +2,9 @@ import numpy as np
 import torch
 import wandb
 
+from typing import Dict, Optional, Tuple
+
+
 def compute_iou(pred_label: np.ndarray, actual_label: np.ndarray) -> np.ndarray:
     intersection = np.logical_and(pred_label == 1, actual_label == 1).sum(axis=-1)
     union = np.logical_or(pred_label == 1, actual_label == 1).sum(axis=-1)
@@ -9,7 +12,10 @@ def compute_iou(pred_label: np.ndarray, actual_label: np.ndarray) -> np.ndarray:
 
     return iou
 
-def get_pc_viz(data: dict, pred_thresh: torch.Tensor) -> tuple:
+
+def get_pc_viz(data: Dict, pred_thresh: torch.Tensor, n_samples: Optional[int] = None) -> Tuple:
+    if n_samples is None:
+        n_samples = min(len(data['query']), 4)
     query_viz = []
     gt_viz = []
     support_viz = []
@@ -17,7 +23,7 @@ def get_pc_viz(data: dict, pred_thresh: torch.Tensor) -> tuple:
     negative_color = [0, 255, 255]
     positive_color = [255, 255, 0]
     
-    for i in range(4):
+    for i in range(n_samples):
         query = data['query'][i,:,:3].cpu().numpy()
 
         pred = pred_thresh[i].cpu().numpy()

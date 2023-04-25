@@ -6,7 +6,7 @@ from fa.dgcnn import build_conv_block_1d, build_conv_block_2d, get_graph_feature
 
 class DGCNNPredHead(nn.Module):
     def __init__(
-        self, in_dim: int, k: int = 20, use_knn: bool = True, dropout: float = 0.5
+        self, in_dim: int, dropout: float = 0.5, use_knn: bool = True, k: int = 20,
     ) -> None:
         super().__init__()
 

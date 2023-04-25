@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from fa.dgcnn import build_conv_block_1d, build_conv_block_2d, get_graph_feature
+from fa.dgcnn import build_conv_block_1d, get_graph_feature
 
 
 class SimpleAggregator(nn.Module):
@@ -37,10 +37,10 @@ class DynamicConvolution(nn.Module):
         scene_feat_dim: int,
         template_feat_dim: int,
         cond_conv_num_layers: int = 2,
-        cond_conv_feat_dim: int = 16,
+        cond_conv_feat_dim: int = 64,
         use_coords: bool = False,
-        use_knn: bool = True,
-        predict_mask: bool = True,
+        use_knn: bool = False,
+        predict_mask: bool = False,
     ) -> None:
         super().__init__()
 
@@ -65,15 +65,15 @@ class DynamicConvolution(nn.Module):
         if predict_mask:
             self.weight_dims.append(cond_conv_feat_dim * 1)
             self.bias_dims.append(1)
+            self.out_dim = None
+        else:
+            self.out_dim = cond_conv_feat_dim
 
         self.controller_head = nn.Linear(template_feat_dim, sum(self.weight_dims) + sum(self.bias_dims))
         torch.nn.init.normal_(self.controller_head.weight, std=0.01)
         torch.nn.init.constant_(self.controller_head.bias, 0)
 
-        if self.use_knn:
-            self.process_scene_feat = build_conv_block_2d(2 * scene_feat_dim, cond_conv_feat_dim)
-        else:
-            self.process_scene_feat = build_conv_block_1d(scene_feat_dim, cond_conv_feat_dim)
+        self.process_scene_feat = SimpleAggregator(scene_feat_dim, template_feat_dim, cond_conv_feat_dim)
 
     def parse_dynamic_params(self, params: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, int]:
         assert params.dim() == 2
@@ -94,11 +94,7 @@ class DynamicConvolution(nn.Module):
         return weight_splits, bias_splits, batches
 
     def forward(self, scene_feat: torch.Tensor, template_feat: torch.Tensor) -> torch.Tensor:
-        if self.use_knn:
-            scene_feat = get_graph_feature(scene_feat)
-            scene_feat = self.process_scene_feat(scene_feat).amax(dim=-1)
-        else:
-            scene_feat = self.process_scene_feat(scene_feat)
+        scene_feat = self.process_scene_feat(scene_feat, template_feat)
 
         if self.use_coords:
             raise NotImplementedError
