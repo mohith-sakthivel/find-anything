@@ -35,7 +35,7 @@ config.aggr_feat_size = 128
 
 # Train
 config.epochs = 250
-config.batch_size = 20
+config.batch_size = 12
 config.lr = 5e-4
 config.train_dataset_size = 2e3
 config.gamma = 0.5
@@ -76,7 +76,9 @@ def evaluate_model(model: nn.Module, data_loader: DataLoader, config: Dict) -> D
             scene_pointcloud=data['query'],
             template_pointcloud=data['support'],
         )
-        loss.append(F.binary_cross_entropy_with_logits(pred, data['class_labels'], reduction='mean', pos_weight=    loss_fn = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([config.pos_sample_weight])).cpu().item())
+        loss.append(F.binary_cross_entropy_with_logits(pred, data['class_labels'], 
+                                                       reduction='mean', 
+                                                       pos_weight=torch.Tensor([config.pos_sample_weight]).to(config.device)).cpu())
 
         pred_thresh = (pred > config.pred_threshold).to(torch.float32)
         pred_labels.append(pred_thresh.cpu().numpy())
@@ -159,7 +161,7 @@ def train_model(config: Dict) -> None:
         fusion_module=feat_agg,
         pred_head=pred_head,
         template_feat_extractor=template_feat_extractor,
-        use_common_feat_extractor=True
+        use_common_feat_extractor=False
     )
 
     optimizer = optim.Adam(model.parameters(), lr=config.lr, weight_decay=1e-4)
@@ -179,7 +181,7 @@ def train_model(config: Dict) -> None:
         scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
         start_epoch = checkpoint["epoch"]
 
-    loss_fn = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([config.pos_sample_weight]))
+    loss_fn = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([config.pos_sample_weight]).to(config.device))
     model.to(config.device)
 
     for epoch in range(start_epoch, config.epochs):
