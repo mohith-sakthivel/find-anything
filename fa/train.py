@@ -15,7 +15,7 @@ from torch.utils.data import DataLoader
 
 from fa.utils import AttrDict, save_checkpoint, seed_everything
 from fa.dgcnn import DGCNNSeg
-from fa.fusion import SimpleAggregator
+from fa.fusion import DynamicConvolution
 from fa.predictor import DGCNNPredHead
 from fa.model import FindAnything
 from fa.dataset import FindAnythingDataset
@@ -27,11 +27,10 @@ config = AttrDict()
 # Setup
 config.seed = 0
 config.device = "cuda"
-config.num_workers = 20
+config.num_workers = 12
 
 # Model
-config.use_pretrained_dgcnn = None
-config.aggr_feat_size = 128
+# config.aggr_feat_size = 128
 
 # Train
 config.epochs = 250
@@ -149,19 +148,16 @@ def train_model(config: Dict) -> None:
     feat_extractor = DGCNNSeg()
     template_feat_extractor = DGCNNSeg()
 
-    feat_agg = SimpleAggregator(
+    feat_agg = DynamicConvolution(
         scene_feat_dim=feat_extractor.feat_dim,
-        template_feat_dim=template_feat_extractor.feat_dim,
-        project_dim=config.aggr_feat_size
+        template_feat_dim=template_feat_extractor.feat_dim
     )
-    pred_head = DGCNNPredHead(in_dim=feat_agg.out_dim)
 
     model = FindAnything(
         scene_feat_extractor=feat_extractor,
-        fusion_module=feat_agg,
-        pred_head=pred_head,
         template_feat_extractor=template_feat_extractor,
-        use_common_feat_extractor=False
+        fusion_module=feat_agg,
+        pred_head=nn.Identity()
     )
 
     optimizer = optim.Adam(model.parameters(), lr=config.lr, weight_decay=1e-4)
