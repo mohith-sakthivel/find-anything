@@ -22,15 +22,15 @@ class FindAnythingDataset(Dataset):
                 used for the scene that is returned (default is False)
 
         Returns Dictionary with keys:
-            "query": Point cloud scene of shape (N, 3) in torch.float32, including a plane and a random
+            "scene": Point cloud scene of shape (N, 3) in torch.float32, including a plane and a random
                 number of objects from random classes
-            "support_mask": Point cloud object to search of shape (M, 3) in torch.float32, is one of the 
-                existing classes in the "query" scene
-            "label": label mask for the support object within the query scene of shape (N, 1) in torch.uint8
-                label mask is 1 if the point is part of the support object, 0 otherwise
-            "instance_label": instance-level label mask for the support object within the query scene of
+            "template_mask": Point cloud object to search of shape (M, 3) in torch.float32, is one of the 
+                existing classes in the scene
+            "label": label mask for the template object within the scene of shape (N, 1) in torch.uint8
+                label mask is 1 if the point is part of the template object, 0 otherwise
+            "instance_label": instance-level label mask for the template object within the scene of
                 shape (N, 1) in torch.uint8, beginning with 0 for the first instance, 1, and so on. All
-                non-support points are labeled -1
+                non-template points are labeled -1
             "debug_objects_list" (optional): list of open3d.geometry.PointCloud objects that were used for
                 the scene that is returned if debug_mode is set to True (default is False), including the
                 plane and all objects in the scene
@@ -46,17 +46,23 @@ class FindAnythingDataset(Dataset):
             root_dir: str = "data/ModelNet",
             split: str = "train",
             dataset_size: int = 1e4,
-            num_query_points: int = 2048,
-            num_support_points: int = 1024,
-            debug_mode: int = False
+            num_scene_points: int = 2048,
+            num_template_points: int = 1024,
+            debug_mode: int = False,
+            use_normals_for_scene: bool = True,
+            use_normals_for_template: bool = True,
         ):
         # Set variables
         self.root_dir = root_dir
         self.split = split
         self.dataset_size = int(dataset_size)
         self.debug_mode = debug_mode
-        self.num_query_points = num_query_points
-        self.num_support_points = num_support_points
+        self.num_scene_points = num_scene_points
+        self.num_template_points = num_template_points
+        self.use_normals_for_scene = use_normals_for_scene
+        self.use_normals_for_template = use_normals_for_template
+        self.scene_pc_dim = 6 if self.use_normals_for_scene else 3
+        self.template_pc_dim = 6 if self.use_normals_for_template else 3
 
         # Get all types of objects
         self.obj_classes = [obj_class for obj_class in os.listdir(root_dir)]
@@ -242,9 +248,9 @@ class FindAnythingDataset(Dataset):
         obj_counts = np.array(obj_counts)
 
         total_area = np.sum(obj_surface_areas * obj_counts)
-        obj_num_pts = ((obj_surface_areas / total_area) * self.num_query_points).astype(int)
+        obj_num_pts = ((obj_surface_areas / total_area) * self.num_scene_points).astype(int)
         # Add residual points from integer division to last object
-        obj_num_pts[-1] += (self.num_query_points - np.sum(obj_num_pts * obj_counts))
+        obj_num_pts[-1] += (self.num_scene_points - np.sum(obj_num_pts * obj_counts))
 
         obj_point_clouds = []
         for i in range(len(obj_meshes)):
@@ -261,11 +267,11 @@ class FindAnythingDataset(Dataset):
             point_cloud = Pointclouds(points=pc[0], normals=pc[1])
             obj_point_clouds.append(point_cloud)
 
-        query_points = []
-        query_normals = []
-        query_class_labels = []
-        query_instance_labels = []
-        query_pt_colors = []
+        scene_points = []
+        scene_normals = []
+        scene_class_labels = []
+        scene_instance_labels = []
+        scene_pt_colors = []
 
         for i in range(len(obj_classes)):
             for j in range(obj_counts[i]):
@@ -298,49 +304,53 @@ class FindAnythingDataset(Dataset):
                     points = points[indices]
                     normals = normals[indices]
                 
-                query_points.append(points)
-                query_normals.append(normals)
+                scene_points.append(points)
+                scene_normals.append(normals)
                 if i == 0:
-                    query_class_labels.append(np.ones(obj_num_pts[i], dtype=np.float32))
+                    scene_class_labels.append(np.ones(obj_num_pts[i], dtype=np.float32))
                 else:
-                    query_class_labels.append(np.zeros(obj_num_pts[i], dtype=np.float32))
-                query_instance_labels.append(j * np.ones(obj_num_pts[i], dtype=np.float32))
-                query_pt_colors.append(obj_colors[i].reshape(1, 3).repeat(obj_num_pts[i], axis=0))
+                    scene_class_labels.append(np.zeros(obj_num_pts[i], dtype=np.float32))
+                scene_instance_labels.append(j * np.ones(obj_num_pts[i], dtype=np.float32))
+                scene_pt_colors.append(obj_colors[i].reshape(1, 3).repeat(obj_num_pts[i], axis=0))
 
         # Randomly sample positions for all objects
         half_side_with_offset = self.plane_side_dim - self.object_size_range[1]
         random_positions = self.random_positions(half_side_with_offset, obj_point_clouds, obj_counts)
-        for i in range(len(query_points) - 1):
-            query_points[i] += random_positions[i]
+        for i in range(len(scene_points) - 1):
+            scene_points[i] += random_positions[i]
 
         # Create sample data
-        query_points = np.concatenate(query_points, axis=0)
-        query_normals = np.concatenate(query_normals, axis=0)
-        query_pc = torch.from_numpy(np.concatenate([query_points, query_normals], axis=-1))
-        class_labels = torch.from_numpy(np.concatenate(query_class_labels, axis=0))
-        instance_labels = torch.from_numpy(np.concatenate(query_instance_labels, axis=0))
+        scene_points = np.concatenate(scene_points, axis=0)
+        scene_normals = np.concatenate(scene_normals, axis=0)
+        if self.use_normals_for_scene:
+            scene_pc = torch.from_numpy(np.concatenate([scene_points, scene_normals], axis=-1))
+        else:
+            scene_pc = torch.from_numpy(scene_points, axis=-1)
+        class_labels = torch.from_numpy(np.concatenate(scene_class_labels, axis=0))
+        instance_labels = torch.from_numpy(np.concatenate(scene_instance_labels, axis=0))
 
-        # Create support point cloud
-        sampled_pc = sample_points_from_meshes(obj_meshes[0], self.num_support_points, return_normals=True)
-        support_pc = np.concatenate([np.asarray(sampled_pc[0].squeeze()), 
-                                     np.asarray(sampled_pc[1].squeeze())], 
-                                     axis=-1)
-        support_pc = torch.from_numpy(support_pc).to(torch.float32)
+        # Create template point cloud
+        sampled_pc = sample_points_from_meshes(obj_meshes[0], self.num_template_points, return_normals=True)
+        if self.use_normals_for_template:
+            template_pc = np.concatenate([np.asarray(sampled_pc[0].squeeze()), np.asarray(sampled_pc[1].squeeze())], axis=-1)
+        else:
+            template_pc = np.asarray(sampled_pc[0].squeeze())
+        template_pc = torch.from_numpy(template_pc).to(torch.float32)
 
         # Normalize Data
-        query_pc = (query_pc - self.data_mean) / self.data_std
-        support_pc = (support_pc - self.data_mean) / self.data_std
+        scene_pc = (scene_pc - self.data_mean) / self.data_std
+        template_pc = (template_pc - self.data_mean) / self.data_std
 
-        # Return query point cloud, support point cloud, labels, and instance labels as dictionary
+        # Return scene point cloud, template point cloud, labels, and instance labels as dictionary
         data = {
-            "query": query_pc[:self.num_query_points],
-            "class_labels": class_labels[:self.num_query_points],
-            "instance_label": instance_labels[:self.num_query_points],
-            "support": support_pc
+            "scene": scene_pc[:self.num_scene_points],
+            "class_labels": class_labels[:self.num_scene_points],
+            "instance_label": instance_labels[:self.num_scene_points],
+            "template": template_pc
         }
         
         if self.debug_mode is True:
-            data["colors"] = np.concatenate(query_pt_colors, axis=0)[:self.num_query_points]
+            data["colors"] = np.concatenate(scene_pt_colors, axis=0)[:self.num_scene_points]
             data["obj_classes"] = obj_classes
             data["obj_counts"] = obj_counts
 
@@ -356,7 +366,7 @@ if __name__ == "__main__":
 
     # Visualize one point cloud from the dataset
     data = dataset[0]
-    print("Total number of points (including plane):", len(data["query"]))
+    print("Total number of points (including plane):", len(data["scene"]))
     for obj, obj_count in zip(data["obj_classes"], data["obj_counts"]):
         print(f"class: {obj:<15} \t count: {obj_count:02d}")
 
@@ -364,7 +374,7 @@ if __name__ == "__main__":
     # import matplotlib.pyplot as plt
 
     # # Visualize the point cloud with matplotlib without Axes3D
-    # point_cloud = data['query']
+    # point_cloud = data['scene']
     # fig = plt.figure()
     # ax = fig.add_subplot(projection='3d')
     # ax.scatter(point_cloud[:, 0], point_cloud[:, 1], point_cloud[:, 2], s=1)
