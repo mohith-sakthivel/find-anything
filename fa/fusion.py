@@ -52,31 +52,46 @@ class SimpleAggregator(nn.Module):
             scene_feat_dim: int,
             template_feat_dim: int,
             out_dim: Optional[int] = None,
-            use_self_attention: bool = False
+            use_difference: bool = True,
+            use_similarity: bool = True,
+            use_self_attention: bool = True
         ) -> None:
         super().__init__()
 
         assert scene_feat_dim == template_feat_dim
         self.scene_feat_dim = scene_feat_dim
         self.template_feat_dim = template_feat_dim
+        self.use_difference = use_difference
+        self.use_similarity = use_similarity
         self.use_self_attention = use_self_attention
 
         if self.use_self_attention:
             self.template_sa = SelfAttention(self.template_feat_dim, self.template_feat_dim)
 
+        upscale_factor = 2 + (self.use_difference and self.use_similarity)
+
         if out_dim is None:
-            self.out_dim = 3 * self.scene_feat_dim
+            self.out_dim = upscale_factor * self.scene_feat_dim
             self.projection_head = None
         else:
             self.out_dim = out_dim
-            self.projection_head = build_conv_block_1d(3 * self.scene_feat_dim, out_dim)
+            self.projection_head = build_conv_block_1d(upscale_factor * self.scene_feat_dim, out_dim)
 
     def forward(self, scene_feat: torch.Tensor, template_feat: torch.Tensor) -> torch.Tensor:
         if self.use_self_attention:
             template_feat = self.template_sa(template_feat)
         template_feat = template_feat.amax(dim=-1, keepdims=True)
 
-        aggr_feat = torch.cat([scene_feat - template_feat, scene_feat * template_feat, scene_feat], dim=-2)
+        feat_list = []
+        if self.use_difference:
+            feat_list.append(scene_feat - template_feat)
+        if self.use_similarity:
+            feat_list.append(scene_feat * template_feat)
+        if not (self.use_difference or self.use_similarity):
+            feat_list.append(template_feat.expand(-1, -1, scene_feat.shape[-1]))
+        feat_list.append(scene_feat)
+
+        aggr_feat = torch.cat(feat_list, dim=-2)
 
         if self.projection_head is not None:
             aggr_feat = self.projection_head(aggr_feat)

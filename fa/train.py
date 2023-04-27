@@ -36,7 +36,12 @@ config.predictor = 'dgcnn'
 config.aggr_feat_dim = 128
 
 config.feat_extractor_args = AttrDict()
+
 config.aggregator_args = AttrDict()
+config.aggregator_args.use_self_attention = True
+config.aggregator_args.use_difference = True
+config.aggregator_args.use_similarity = True
+
 config.predictor_args = AttrDict()
 
 # Train
@@ -163,16 +168,22 @@ def train_model(config: Dict) -> None:
         num_workers=config.num_workers,
     )
 
-    scene_feat_extractor = FEATURE_EXTRACTORS[config.feat_extractor](pc_dim=train_dataset.scene_pc_dim)
-    template_feat_extractor = FEATURE_EXTRACTORS[config.feat_extractor](pc_dim=train_dataset.template_pc_dim)
+    scene_feat_extractor = FEATURE_EXTRACTORS[config.feat_extractor](
+        pc_dim=train_dataset.scene_pc_dim,
+        **config.feat_extractor_args)
+    template_feat_extractor = FEATURE_EXTRACTORS[config.feat_extractor](
+        pc_dim=train_dataset.template_pc_dim,
+        **config.feat_extractor_args
+    )
 
     feat_agg = AGGREGATORS[config.aggregator](
         scene_feat_dim=scene_feat_extractor.feat_dim,
         template_feat_dim=scene_feat_extractor.feat_dim,
         out_dim=config.aggr_feat_dim,
+        **config.aggregator_args
     )
 
-    pred_head = PREDICTORS[config.predictor](in_dim=feat_agg.out_dim)
+    pred_head = PREDICTORS[config.predictor](in_dim=feat_agg.out_dim, **config.predictor_args)
 
     model = FindAnything(
         scene_feat_extractor=scene_feat_extractor,
