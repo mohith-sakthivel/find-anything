@@ -100,11 +100,11 @@ class DGCNNSeg(nn.Module):
 
         self.conv7 = build_conv_block_1d(64 * 3 + embed_dim, 512)
 
-        self.conv8 = build_conv_block_1d(512, 256)
+        self.conv8 = build_conv_block_1d(512, self.feat_dim)
 
         if num_classes is not None:
             self.dp = nn.Dropout(p=dropout)
-            self.conv9 = nn.Conv1d(256, num_classes, 1)
+            self.conv9 = nn.Conv1d(self.feat_dim, num_classes, 1)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         b, n_pts, _ = x.size()
