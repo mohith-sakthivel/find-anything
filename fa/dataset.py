@@ -325,7 +325,7 @@ class FindAnythingDataset(Dataset):
         if self.use_normals_for_scene:
             scene_pc = torch.from_numpy(np.concatenate([scene_points, scene_normals], axis=-1))
         else:
-            scene_pc = torch.from_numpy(scene_points, axis=-1)
+            scene_pc = torch.from_numpy(scene_points)
         class_labels = torch.from_numpy(np.concatenate(scene_class_labels, axis=0))
         instance_labels = torch.from_numpy(np.concatenate(scene_instance_labels, axis=0))
 
@@ -338,9 +338,16 @@ class FindAnythingDataset(Dataset):
         template_pc = torch.from_numpy(template_pc).to(torch.float32)
 
         # Normalize Data
-        scene_pc = (scene_pc - self.data_mean) / self.data_std
-        template_pc = (template_pc - self.data_mean) / self.data_std
-
+        if self.use_normals_for_scene:
+            scene_pc = (scene_pc - self.data_mean) / self.data_std
+        else:
+            scene_pc = (scene_pc - self.data_mean[:3]) / self.data_std[:3]
+        
+        if self.use_normals_for_template:
+            template_pc = (template_pc - self.data_mean) / self.data_std
+        else:
+            template_pc = (template_pc - self.data_mean[:3]) / self.data_std[:3]
+        
         # Return scene point cloud, template point cloud, labels, and instance labels as dictionary
         data = {
             "scene": scene_pc[:self.num_scene_points],

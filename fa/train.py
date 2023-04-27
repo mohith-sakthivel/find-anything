@@ -28,15 +28,15 @@ config = AttrDict()
 config.seed = 0
 config.device = "cuda"
 config.num_workers = 12
-config.use_normals_for_scene = True
-config.use_normals_for_template = True
+config.use_normals_for_scene = False
+config.use_normals_for_template = False
 
 # Model
 config.aggr_feat_size = 128
 
 # Train
 config.epochs = 250
-config.batch_size = 12
+config.batch_size = 4
 config.lr = 5e-4
 config.train_dataset_size = 2e3
 config.gamma = 0.5
