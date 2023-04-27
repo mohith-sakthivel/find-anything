@@ -51,7 +51,7 @@ class SimpleAggregator(nn.Module):
             self,
             scene_feat_dim: int,
             template_feat_dim: int,
-            project_dim: Optional[int] = None,
+            out_dim: Optional[int] = None,
             use_self_attention: bool = False
         ) -> None:
         super().__init__()
@@ -64,12 +64,12 @@ class SimpleAggregator(nn.Module):
         if self.use_self_attention:
             self.template_sa = SelfAttention(self.template_feat_dim, self.template_feat_dim)
 
-        if project_dim is None:
+        if out_dim is None:
             self.out_dim = 3 * self.scene_feat_dim
             self.projection_head = None
         else:
-            self.out_dim = project_dim
-            self.projection_head = build_conv_block_1d(3 * self.scene_feat_dim, project_dim)
+            self.out_dim = out_dim
+            self.projection_head = build_conv_block_1d(3 * self.scene_feat_dim, out_dim)
 
     def forward(self, scene_feat: torch.Tensor, template_feat: torch.Tensor) -> torch.Tensor:
         if self.use_self_attention:
