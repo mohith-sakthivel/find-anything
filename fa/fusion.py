@@ -52,9 +52,9 @@ class SimpleAggregator(nn.Module):
             scene_feat_dim: int,
             template_feat_dim: int,
             out_dim: Optional[int] = None,
-            use_difference: bool = True,
+            use_difference: bool = False,
             use_similarity: bool = True,
-            use_self_attention: bool = True
+            use_self_attention: bool = False
         ) -> None:
         super().__init__()
 

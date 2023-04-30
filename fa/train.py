@@ -38,9 +38,6 @@ config.aggr_feat_dim = 128
 config.feat_extractor_args = AttrDict()
 
 config.aggregator_args = AttrDict()
-config.aggregator_args.use_self_attention = True
-config.aggregator_args.use_difference = True
-config.aggregator_args.use_similarity = True
 
 config.predictor_args = AttrDict()
 
