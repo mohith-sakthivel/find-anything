@@ -3,15 +3,8 @@ Code adapted from https://github.com/antao97/dgcnn.pytorch
 """
 
 
-import os
-import sys
-import copy
-import math
-import numpy as np
 import torch
 import torch.nn as nn
-import torch.nn.init as init
-import torch.nn.functional as F
 
 from typing import Optional
 

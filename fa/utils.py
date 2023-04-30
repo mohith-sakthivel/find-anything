@@ -7,7 +7,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
-from typing import Dict, Optional
+from typing import Optional
 
 
 class AttrDict(dict):
