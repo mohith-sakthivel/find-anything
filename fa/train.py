@@ -15,8 +15,10 @@ from torch.utils.data import DataLoader
 
 from fa.utils import AttrDict, save_checkpoint, seed_everything
 from fa.dgcnn import DGCNNSeg
+from fa.vn_dgcnn import VN_DGCNNSeg
 from fa.fusion import SimpleAggregator
 from fa.predictor import DGCNNPredHead
+from fa.vn_predictor import VN_DGCNNPredHead
 from fa.model import FindAnything
 from fa.dataset import FindAnythingDataset
 from fa.eval_utils import compute_iou, get_pc_viz
@@ -28,15 +30,15 @@ config = AttrDict()
 config.seed = 0
 config.device = "cuda"
 config.num_workers = 12
-config.use_normals_for_scene = False
-config.use_normals_for_template = False
+config.use_normals_for_scene = True
+config.use_normals_for_template = True
 
 # Model
-config.aggr_feat_size = 128
+config.aggr_feat_size = 129
 
 # Train
 config.epochs = 250
-config.batch_size = 4
+config.batch_size = 1
 config.lr = 5e-4
 config.train_dataset_size = 2e3
 config.gamma = 0.5
@@ -158,8 +160,8 @@ def train_model(config: Dict) -> None:
         num_workers=config.num_workers,
     )
 
-    scene_feat_extractor = DGCNNSeg(pc_dim=train_dataset.scene_pc_dim)
-    template_feat_extractor = DGCNNSeg(pc_dim=train_dataset.template_pc_dim)
+    scene_feat_extractor = VN_DGCNNSeg(pc_dim=train_dataset.scene_pc_dim)
+    template_feat_extractor = VN_DGCNNSeg(pc_dim=train_dataset.template_pc_dim)
 
     feat_agg = SimpleAggregator(
         scene_feat_dim=scene_feat_extractor.feat_dim,
@@ -167,7 +169,7 @@ def train_model(config: Dict) -> None:
         project_dim=config.aggr_feat_size,
     )
 
-    pred_head = DGCNNPredHead(in_dim=feat_agg.out_dim)
+    pred_head = VN_DGCNNPredHead(in_dim=feat_agg.out_dim)
 
     model = FindAnything(
         scene_feat_extractor=scene_feat_extractor,
