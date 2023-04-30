@@ -304,3 +304,78 @@ class VN_DGCNNSeg(nn.Module):
             x = self.conv9(x).squeeze()
 
         return x
+
+class VN_Backbone(nn.Module):
+    def __init__(
+        self,
+        feat_dim: int = 256,
+        k: int = 20,
+        pooling: str = 'max',
+    ):
+        super().__init__()
+        self.k = k
+        self.feat_dim = feat_dim
+        
+        self.bn7 = nn.BatchNorm1d(64)
+        self.bn8 = nn.BatchNorm1d(256)
+        
+        self.conv1 = VNLinearLeakyReLU(2, 64//3)
+        self.conv2 = VNLinearLeakyReLU(64//3, 64//3)
+        self.conv3 = VNLinearLeakyReLU(64//3*2, 64//3)
+        self.conv4 = VNLinearLeakyReLU(64//3, 64//3)
+        self.conv5 = VNLinearLeakyReLU(64//3*2, 64//3)
+        
+        if pooling == 'max':
+            self.pool1 = VNMaxPool(64//3)
+            self.pool2 = VNMaxPool(64//3)
+            self.pool3 = VNMaxPool(64//3)
+        elif pooling == 'mean':
+            self.pool1 = mean_pool
+            self.pool2 = mean_pool
+            self.pool3 = mean_pool
+        
+        self.conv6 = VNLinearLeakyReLU(64//3*3, 1024//3, dim=4, share_nonlinearity=True)
+        self.std_feature = VNStdFeature(1024//3*2, dim=4, normalize_frame=False)
+
+        self.conv8 = nn.Sequential(nn.Conv1d(2299, self.feat_dim, kernel_size=1, bias=False),
+                               self.bn8,
+                               nn.LeakyReLU(negative_slope=0.2))
+
+    def forward(self, x):
+        batch_size, num_points, _ = x.size()
+
+        x = x.transpose(-1, -2)
+
+        x = x.unsqueeze(1)
+        
+        x = get_graph_feature(x, k=self.k)
+        x = self.conv1(x)
+        x = self.conv2(x)
+        x1 = self.pool1(x)
+        
+        x = get_graph_feature(x1, k=self.k)
+        x = self.conv3(x)
+        x = self.conv4(x)
+        x2 = self.pool2(x)
+        
+        x = get_graph_feature(x2, k=self.k)
+        x = self.conv5(x)
+        x3 = self.pool3(x)
+        
+        x123 = torch.cat((x1, x2, x3), dim=1)
+        
+        x = self.conv6(x123)
+        x_mean = x.mean(dim=-1, keepdim=True).expand(x.size())
+        x = torch.cat((x, x_mean), 1)
+        x, z0 = self.std_feature(x)
+        x123 = torch.einsum('bijm,bjkm->bikm', x123, z0).view(batch_size, -1, num_points)
+        x = x.view(batch_size, -1, num_points)
+        x = x.max(dim=-1, keepdim=True)[0]
+
+        x = x.repeat(1, 1, num_points)
+
+        x = torch.cat((x, x123), dim=1)
+
+        x = self.conv8(x)
+        
+        return x

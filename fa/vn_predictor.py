@@ -51,3 +51,35 @@ class VN_DGCNNPredHead(nn.Module):
         x = self.conv3(x)
 
         return x.squeeze(dim=-2)
+
+class VN_Head(nn.Module):
+    def __init__(
+        self, 
+        in_dim: int = 256
+    ) -> None:
+        super().__init__()
+
+        self.in_dim = in_dim
+
+        self.bn9 = nn.BatchNorm1d(256)
+        self.bn10 = nn.BatchNorm1d(128)
+
+        self.dp1 = nn.Dropout(p=0.5)
+        self.conv9 = nn.Sequential(nn.Conv1d(self.in_dim, 256, kernel_size=1, bias=False),
+                                   self.bn9,
+                                   nn.LeakyReLU(negative_slope=0.2))
+        self.dp2 = nn.Dropout(p=0.5)
+        self.conv10 = nn.Sequential(nn.Conv1d(256, 128, kernel_size=1, bias=False),
+                                   self.bn10,
+                                   nn.LeakyReLU(negative_slope=0.2))
+        self.conv11 = nn.Conv1d(128, 1, kernel_size=1, bias=False)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+
+        x = self.dp1(x)
+        x = self.conv9(x)
+        x = self.dp2(x)
+        x = self.conv10(x)
+        x = self.conv11(x)
+
+        return x
