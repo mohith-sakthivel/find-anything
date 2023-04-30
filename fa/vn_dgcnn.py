@@ -202,13 +202,6 @@ class VNStdFeature(nn.Module):
         
         return x_std, z0
 
-
-
-
-def build_conv_block_2d(in_dim: int, out_dim: int) -> nn.Module:
-    return VNLinearLeakyReLU(in_dim, out_dim)
-
-
 def build_conv_block_1d(in_dim: int, out_dim: int) -> nn.Module:
     block = nn.Sequential(
         nn.Conv1d(in_dim, out_dim, kernel_size=1, bias=False),
@@ -236,13 +229,13 @@ class VN_DGCNNSeg(nn.Module):
         self.num_classes = num_classes
         self.feat_dim = feat_dim
 
-        self.conv1 = build_conv_block_2d(2*pc_dim//3, 64//3)
-        self.conv2 = build_conv_block_2d(64//3, 64//3)
+        self.conv1 = VNLinearLeakyReLU(2*pc_dim//3, 64//3)
+        self.conv2 = VNLinearLeakyReLU(64//3, 64//3)
 
-        self.conv3 = build_conv_block_2d(64//3 * 2, 64//3)
-        self.conv4 = build_conv_block_2d(64//3, 64//3)
+        self.conv3 = VNLinearLeakyReLU(64//3 * 2, 64//3)
+        self.conv4 = VNLinearLeakyReLU(64//3, 64//3)
 
-        self.conv5 = build_conv_block_2d(64//3 * 2, 64//3)
+        self.conv5 = VNLinearLeakyReLU(64//3 * 2, 64//3)
 
         self.conv6 = VNLinearLeakyReLU(64//3, embed_dim//3, dim=4, share_nonlinearity=True)
         self.std_feature = VNStdFeature(embed_dim//3*2, dim=4, normalize_frame=False)
@@ -319,7 +312,7 @@ class VN_Backbone(nn.Module):
         self.bn7 = nn.BatchNorm1d(64)
         self.bn8 = nn.BatchNorm1d(256)
         
-        self.conv1 = VNLinearLeakyReLU(2, 64//3)
+        self.conv1 = VNLinearLeakyReLU(4, 64//3)
         self.conv2 = VNLinearLeakyReLU(64//3, 64//3)
         self.conv3 = VNLinearLeakyReLU(64//3*2, 64//3)
         self.conv4 = VNLinearLeakyReLU(64//3, 64//3)
@@ -337,7 +330,7 @@ class VN_Backbone(nn.Module):
         self.conv6 = VNLinearLeakyReLU(64//3*3, 1024//3, dim=4, share_nonlinearity=True)
         self.std_feature = VNStdFeature(1024//3*2, dim=4, normalize_frame=False)
 
-        self.conv8 = nn.Sequential(nn.Conv1d(2299, self.feat_dim, kernel_size=1, bias=False),
+        self.conv8 = nn.Sequential(nn.Conv1d(2235, self.feat_dim, kernel_size=1, bias=False),
                                self.bn8,
                                nn.LeakyReLU(negative_slope=0.2))
 

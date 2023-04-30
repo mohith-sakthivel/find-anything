@@ -42,7 +42,7 @@ config.aggr_feat_size = 129
 
 # Train
 config.epochs = 250
-config.batch_size = 3
+config.batch_size = 1
 config.lr = 1e-3
 config.train_dataset_size = 1e3
 config.gamma = 0.5

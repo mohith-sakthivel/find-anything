@@ -82,4 +82,4 @@ class VN_Head(nn.Module):
         x = self.conv10(x)
         x = self.conv11(x)
 
-        return x
+        return x.squeeze(dim=-2) 
