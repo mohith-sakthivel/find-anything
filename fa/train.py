@@ -13,6 +13,12 @@ import torch.optim as optim
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 
+from fa.utils import AttrDict, save_checkpoint, seed_everything
+from fa.dgcnn import DGCNNSeg
+from fa.vn_dgcnn import VN_DGCNNSeg
+from fa.fusion import SimpleAggregator
+from fa.predictor import DGCNNPredHead
+from fa.vn_predictor import VN_DGCNNPredHead
 from fa.model import FindAnything
 from fa.dataset import FindAnythingDataset
 from fa import FEATURE_EXTRACTORS, AGGREGATORS, PREDICTORS
@@ -27,23 +33,14 @@ config.seed = 0
 config.device = "cuda"
 config.num_workers = 12
 config.use_normals_for_scene = False
-config.use_normals_for_template = True
+config.use_normals_for_template = False
 
 # Model
-config.feat_extractor = 'dgcnn'
-config.aggregator = 'simple'
-config.predictor = 'dgcnn'
-config.aggr_feat_dim = 128
-
-config.feat_extractor_args = AttrDict()
-
-config.aggregator_args = AttrDict()
-
-config.predictor_args = AttrDict()
+config.aggr_feat_size = 129
 
 # Train
 config.epochs = 250
-config.batch_size = 12
+config.batch_size = 1
 config.lr = 5e-4
 config.train_dataset_size = 2e3
 config.gamma = 0.5
@@ -165,22 +162,16 @@ def train_model(config: Dict) -> None:
         num_workers=config.num_workers,
     )
 
-    scene_feat_extractor = FEATURE_EXTRACTORS[config.feat_extractor](
-        pc_dim=train_dataset.scene_pc_dim,
-        **config.feat_extractor_args)
-    template_feat_extractor = FEATURE_EXTRACTORS[config.feat_extractor](
-        pc_dim=train_dataset.template_pc_dim,
-        **config.feat_extractor_args
-    )
+    scene_feat_extractor = VN_DGCNNSeg(pc_dim=train_dataset.scene_pc_dim)
+    template_feat_extractor = VN_DGCNNSeg(pc_dim=train_dataset.template_pc_dim)
 
-    feat_agg = AGGREGATORS[config.aggregator](
+    feat_agg = SimpleAggregator(
         scene_feat_dim=scene_feat_extractor.feat_dim,
         template_feat_dim=scene_feat_extractor.feat_dim,
-        out_dim=config.aggr_feat_dim,
-        **config.aggregator_args
+        project_dim=config.aggr_feat_size,
     )
 
-    pred_head = PREDICTORS[config.predictor](in_dim=feat_agg.out_dim, **config.predictor_args)
+    pred_head = VN_DGCNNPredHead(in_dim=feat_agg.out_dim)
 
     model = FindAnything(
         scene_feat_extractor=scene_feat_extractor,
