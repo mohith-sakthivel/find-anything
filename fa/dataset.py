@@ -330,11 +330,24 @@ class FindAnythingDataset(Dataset):
         instance_labels = torch.from_numpy(np.concatenate(scene_instance_labels, axis=0))
 
         # Create template point cloud
-        sampled_pc = sample_points_from_meshes(obj_meshes[0], self.num_template_points, return_normals=True)
+        template_mesh = obj_meshes[0].clone()
+        sampled_pc = sample_points_from_meshes(template_mesh, self.num_template_points, return_normals=True)
+        sampled_pc = Pointclouds(points=pc[0], normals=pc[1])
+        # Define a random orientation
+        x_rot = torch.tensor(random.uniform(0, 2 * np.pi))
+        y_rot = torch.tensor(random.uniform(0, 2 * np.pi))
+        z_rot = torch.tensor(random.uniform(0, 2 * np.pi))
+        rotation = t3d.euler_angles_to_matrix(torch.tensor([x_rot, y_rot, z_rot]), "XYZ")
+        rotate = t3d.Rotate(rotation)
+        # Rotate the point cloud and normals
+        transformed_points = rotate.transform_points(sampled_pc.points_packed())
+        transformed_normals = rotate.transform_normals(sampled_pc.normals_packed())
+        transformed_pc = Pointclouds(points=transformed_points.unsqueeze(0), 
+                                        normals=transformed_normals.unsqueeze(0))
         if self.use_normals_for_template:
-            template_pc = np.concatenate([np.asarray(sampled_pc[0].squeeze()), np.asarray(sampled_pc[1].squeeze())], axis=-1)
+            template_pc = np.concatenate([np.asarray(transformed_pc[0]), np.asarray(transformed_pc[1])], axis=-1)
         else:
-            template_pc = np.asarray(sampled_pc[0].squeeze())
+            template_pc = np.asarray(transformed_pc[0])
         template_pc = torch.from_numpy(template_pc).to(torch.float32)
 
         # Normalize Data
