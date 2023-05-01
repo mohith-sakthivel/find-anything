@@ -342,9 +342,10 @@ class FindAnythingDataset(Dataset):
         transformed_points = rotate.transform_points(sampled_pc[0])
         transformed_normals = rotate.transform_normals(sampled_pc[1])
         if self.use_normals_for_template:
-            template_pc = np.concatenate([np.asarray(transformed_points), np.asarray(transformed_normals)], axis=-1)
+            template_pc = np.concatenate([np.asarray(transformed_points.squeeze()), \
+                                          np.asarray(transformed_normals.squeeze())], axis=-1)
         else:
-            template_pc = np.asarray(transformed_points)
+            template_pc = np.asarray(transformed_points.squeeze())
         template_pc = torch.from_numpy(template_pc).to(torch.float32)
 
         # Normalize Data
