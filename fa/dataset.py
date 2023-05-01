@@ -43,7 +43,7 @@ class FindAnythingDataset(Dataset):
 
     def __init__(
             self,
-            root_dir: str = "data/ModelNet",
+            root_dir: str = "/scratch/ryanlee/3dvision/ModelNet",
             split: str = "train",
             dataset_size: int = 1e4,
             num_scene_points: int = 2048,
