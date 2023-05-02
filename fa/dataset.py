@@ -51,6 +51,7 @@ class FindAnythingDataset(Dataset):
             debug_mode: int = False,
             use_normals_for_scene: bool = True,
             use_normals_for_template: bool = True,
+            rotate_template_pc: bool = False,
         ):
         # Set variables
         self.root_dir = root_dir
@@ -63,6 +64,7 @@ class FindAnythingDataset(Dataset):
         self.use_normals_for_template = use_normals_for_template
         self.scene_pc_dim = 6 if self.use_normals_for_scene else 3
         self.template_pc_dim = 6 if self.use_normals_for_template else 3
+        self.rotate_template_pc = rotate_template_pc
 
         # Get all types of objects
         self.obj_classes = [obj_class for obj_class in os.listdir(root_dir)]
@@ -331,6 +333,16 @@ class FindAnythingDataset(Dataset):
 
         # Create template point cloud
         sampled_pc = sample_points_from_meshes(obj_meshes[0], self.num_template_points, return_normals=True)
+        if self.rotate_template_pc:
+            # Define a random orientation
+            xyz_rot = torch.tensor(np.random.uniform(0, 2*np.pi, 3))
+            rotation = t3d.euler_angles_to_matrix(xyz_rot, "XYZ")
+            rotate = t3d.Rotate(rotation)
+            # Rotate the point cloud and normals
+            transformed_points = rotate.transform_points(sampled_pc[0])
+            transformed_normals = rotate.transform_normals(sampled_pc[1])
+            sampled_pc = (transformed_points, transformed_normals)
+            
         if self.use_normals_for_template:
             template_pc = np.concatenate([np.asarray(sampled_pc[0].squeeze()), np.asarray(sampled_pc[1].squeeze())], axis=-1)
         else:
