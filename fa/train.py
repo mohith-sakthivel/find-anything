@@ -38,12 +38,12 @@ config.use_vector_neurons_for_backbone = True
 config.use_vector_neurons_for_head = False
 
 # Model
-config.aggr_feat_size = 129
+config.aggr_feat_size = 128
 
 # Train
 config.epochs = 250
 config.batch_size = 6
-config.lr = 0.5e-4
+config.lr = 5e-4
 config.train_dataset_size = 2e3
 config.gamma = 0.5
 config.step_size = 50

@@ -303,13 +303,12 @@ class VN_Backbone(nn.Module):
         self,
         feat_dim: int = 256,
         k: int = 20,
-        pooling: str = 'max',
+        pooling: str = 'mean',
     ):
         super().__init__()
         self.k = k
         self.feat_dim = feat_dim
         
-        self.bn7 = nn.BatchNorm1d(64)
         self.bn8 = nn.BatchNorm1d(256)
         
         self.conv1 = VNLinearLeakyReLU(2, 64//3)
@@ -336,7 +335,6 @@ class VN_Backbone(nn.Module):
 
     def forward(self, x):
         batch_size, num_points, _ = x.size()
-
         x = x.transpose(-1, -2)
 
         x = x.unsqueeze(1)
