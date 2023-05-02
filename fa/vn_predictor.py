@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-from fa.vn_dgcnn import build_conv_block_1d, build_conv_block_2d, get_graph_feature, \
+from fa.vn_dgcnn import build_conv_block_1d, get_graph_feature, \
     VNMaxPool, VNLinearLeakyReLU, VNStdFeature, mean_pool
 
 
@@ -20,8 +20,8 @@ class VN_DGCNNPredHead(nn.Module):
         self.use_knn = use_knn
 
         if self.use_knn:
-            self.k_conv1 = build_conv_block_2d(2 * in_dim//3, 64//3)
-            self.k_conv2 = build_conv_block_2d(64//3, 64//3)
+            self.k_conv1 = VNLinearLeakyReLU(2 * in_dim//3, 64//3)
+            self.k_conv2 = VNLinearLeakyReLU(64//3, 64//3)
             self.std_feature = VNStdFeature(64//3*2, dim=4, normalize_frame=False)
 
             if pooling == 'max':

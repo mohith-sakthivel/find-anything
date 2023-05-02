@@ -32,19 +32,19 @@ config = AttrDict()
 config.seed = 0
 config.device = "cuda"
 config.num_workers = 12
-config.use_normals_for_scene = True
-config.use_normals_for_template = True
+config.use_normals_for_scene = False
+config.use_normals_for_template = False
 config.use_vector_neurons_for_backbone = True
-config.use_vector_neurons_for_head = True
+config.use_vector_neurons_for_head = False
 
 # Model
 config.aggr_feat_size = 129
 
 # Train
 config.epochs = 250
-config.batch_size = 1
-config.lr = 1e-3
-config.train_dataset_size = 1e3
+config.batch_size = 6
+config.lr = 0.5e-4
+config.train_dataset_size = 2e3
 config.gamma = 0.5
 config.step_size = 50
 config.pos_sample_weight = 2
@@ -174,7 +174,7 @@ def train_model(config: Dict) -> None:
     feat_agg = SimpleAggregator(
         scene_feat_dim=scene_feat_extractor.feat_dim,
         template_feat_dim=scene_feat_extractor.feat_dim,
-        project_dim=config.aggr_feat_size,
+        out_dim=config.aggr_feat_size,
     )
 
     if config.use_vector_neurons_for_head:

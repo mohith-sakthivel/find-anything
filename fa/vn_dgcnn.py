@@ -312,7 +312,7 @@ class VN_Backbone(nn.Module):
         self.bn7 = nn.BatchNorm1d(64)
         self.bn8 = nn.BatchNorm1d(256)
         
-        self.conv1 = VNLinearLeakyReLU(4, 64//3)
+        self.conv1 = VNLinearLeakyReLU(2, 64//3)
         self.conv2 = VNLinearLeakyReLU(64//3, 64//3)
         self.conv3 = VNLinearLeakyReLU(64//3*2, 64//3)
         self.conv4 = VNLinearLeakyReLU(64//3, 64//3)
@@ -327,10 +327,10 @@ class VN_Backbone(nn.Module):
             self.pool2 = mean_pool
             self.pool3 = mean_pool
         
-        self.conv6 = VNLinearLeakyReLU(64//3*3, 1024//3, dim=4, share_nonlinearity=True)
-        self.std_feature = VNStdFeature(1024//3*2, dim=4, normalize_frame=False)
+        self.conv6 = VNLinearLeakyReLU(64//3*3, 512//3, dim=4, share_nonlinearity=True)
+        self.std_feature = VNStdFeature(512//3*2, dim=4, normalize_frame=False)
 
-        self.conv8 = nn.Sequential(nn.Conv1d(2235, self.feat_dim, kernel_size=1, bias=False),
+        self.conv8 = nn.Sequential(nn.Conv1d(1209, self.feat_dim, kernel_size=1, bias=False),
                                self.bn8,
                                nn.LeakyReLU(negative_slope=0.2))
 
