@@ -18,7 +18,12 @@ def knn(x: torch.Tensor, k: int) -> torch.Tensor:
     return idx
 
 
-def get_graph_feature(x: torch.Tensor, k: int = 20, idx: Optional[torch.Tensor] = None, ignore_geometry_data: bool = False) -> torch.Tensor:
+def get_graph_feature(
+    x: torch.Tensor,
+    k: int = 20,
+    idx: Optional[torch.Tensor] = None,
+    ignore_geometry_data: bool = False
+) -> torch.Tensor:
     batch_size = x.size(0)
     num_points = x.size(2)
     x = x.view(batch_size, -1, num_points)

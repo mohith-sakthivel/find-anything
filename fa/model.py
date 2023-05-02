@@ -11,7 +11,7 @@ class FindAnything(nn.Module):
         scene_feat_extractor: nn.Module,
         template_feat_extractor: nn.Module,
         fusion_module: nn.Module = SimpleAggregator,
-        pred_head: nn.Module = DGCNNPredHead
+        pred_head: nn.Module = DGCNNPredHead,
     ) -> None:
         super().__init__()
 
@@ -21,9 +21,7 @@ class FindAnything(nn.Module):
 
         self.template_feat_extractor = template_feat_extractor
 
-    def forward(
-        self, scene_pointcloud: torch.Tensor, template_pointcloud: torch.Tensor
-    ) -> torch.Tensor:
+    def forward(self, scene_pointcloud: torch.Tensor, template_pointcloud: torch.Tensor) -> torch.Tensor:
         scene_feat = self.scene_feat_extractor(scene_pointcloud)
         template_feat = self.template_feat_extractor(template_pointcloud)
 

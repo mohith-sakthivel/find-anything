@@ -48,14 +48,14 @@ class SelfAttention(nn.Module):
 
 class SimpleAggregator(nn.Module):
     def __init__(
-            self,
-            scene_feat_dim: int,
-            template_feat_dim: int,
-            out_dim: Optional[int] = None,
-            use_difference: bool = False,
-            use_similarity: bool = True,
-            use_self_attention: bool = False
-        ) -> None:
+        self,
+        scene_feat_dim: int,
+        template_feat_dim: int,
+        out_dim: Optional[int] = None,
+        use_difference: bool = False,
+        use_similarity: bool = True,
+        use_self_attention: bool = False,
+    ) -> None:
         super().__init__()
 
         assert scene_feat_dim == template_feat_dim

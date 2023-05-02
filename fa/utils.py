@@ -11,7 +11,6 @@ from typing import Optional
 
 
 class AttrDict(dict):
-
     __setattr__ = dict.__setitem__
     __getattr__ = dict.__getitem__
 
@@ -25,14 +24,13 @@ def seed_everything(seed: int) -> None:
 
 
 def save_checkpoint(
-        model: nn.Module,
-        path: Path,
-        save_only_state_dict: bool = True,
-        optimizer: Optional[optim.Optimizer] = None,
-        scheduler: Optional[optim.lr_scheduler._LRScheduler] = None,
-        epoch: Optional[int] = None
-    ) -> None:
-
+    model: nn.Module,
+    path: Path,
+    save_only_state_dict: bool = True,
+    optimizer: Optional[optim.Optimizer] = None,
+    scheduler: Optional[optim.lr_scheduler._LRScheduler] = None,
+    epoch: Optional[int] = None,
+) -> None:
     if not os.path.exists(path.parent):
         os.makedirs(path.parent)
 

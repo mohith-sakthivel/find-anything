@@ -30,9 +30,9 @@ config.use_normals_for_scene = False
 config.use_normals_for_template = True
 
 # Model
-config.feat_extractor = 'dgcnn'
-config.aggregator = 'simple'
-config.predictor = 'dgcnn'
+config.feat_extractor = "dgcnn"
+config.aggregator = "simple"
+config.predictor = "dgcnn"
 config.aggr_feat_dim = 128
 
 config.feat_extractor_args = AttrDict()
@@ -64,7 +64,7 @@ config.log_freq = 20  # Iters to log after
 config.save_freq = 2  # Epochs to save after. Set None to not save.
 config.save_path = "checkpoints"
 config.checkpoint = None
-config.wandb = 'online'
+config.wandb = "online"
 
 
 @torch.no_grad()
@@ -77,30 +77,29 @@ def evaluate_model(model: nn.Module, data_loader: DataLoader, config: Dict, gene
     first_pass = True
 
     for data in tqdm.tqdm(iterable=data_loader, desc=f"Test", total=len(data_loader)):
-
         data = {k: v.to(config.device) for k, v in data.items()}
 
         pred = model(
-            scene_pointcloud=data['scene'],
-            template_pointcloud=data['template'],
+            scene_pointcloud=data["scene"],
+            template_pointcloud=data["template"],
         )
         loss.append(
             F.binary_cross_entropy_with_logits(
                 input=pred,
-                target=data['class_labels'], 
-                reduction='mean', 
-                pos_weight=torch.Tensor([config.pos_sample_weight]).to(config.device)
+                target=data["class_labels"],
+                reduction="mean",
+                pos_weight=torch.Tensor([config.pos_sample_weight]).to(config.device),
             ).cpu()
         )
 
         pred_thresh = (pred > config.pred_threshold).to(torch.float32)
         pred_labels.append(pred_thresh.cpu().numpy())
-        true_labels.append(data['class_labels'].cpu().numpy())
+        true_labels.append(data["class_labels"].cpu().numpy())
 
         if first_pass and generate_visuals:
             scene_viz, gt_viz, template_viz = get_pc_viz(data, pred_thresh)
             first_pass = False
-            
+
     pred_labels = np.concatenate(pred_labels, axis=0)
     true_labels = np.concatenate(true_labels, axis=0)
 
@@ -108,7 +107,7 @@ def evaluate_model(model: nn.Module, data_loader: DataLoader, config: Dict, gene
         "loss": np.mean(loss),
         "accuracy": accuracy_score(true_labels.reshape(-1), pred_labels.reshape(-1)),
         "balanced_accuracy": balanced_accuracy_score(true_labels.reshape(-1), pred_labels.reshape(-1)),
-        "iou": compute_iou(pred_labels, true_labels)
+        "iou": compute_iou(pred_labels, true_labels),
     }
 
     if generate_visuals:
@@ -120,19 +119,14 @@ def evaluate_model(model: nn.Module, data_loader: DataLoader, config: Dict, gene
 
 
 def train_model(config: Dict) -> None:
-
     seed_everything(config.seed)
     if config.checkpoint is None:
-        run_id = config.exp_name + '-' + datetime.datetime.now().strftime("%Y-%m-%d--%H-%M-%S")
+        run_id = config.exp_name + "-" + datetime.datetime.now().strftime("%Y-%m-%d--%H-%M-%S")
     else:
         run_id = config.checkpoint
 
     wandb_run = wandb.init(
-        project="find-anything",
-        config=config,
-        id=run_id,
-        resume=None if config.checkpoint is None else "must",
-        mode=config.wandb
+        project="find-anything", config=config, id=run_id, resume=None if config.checkpoint is None else "must", mode=config.wandb
     )
 
     train_dataset = FindAnythingDataset(
@@ -141,7 +135,7 @@ def train_model(config: Dict) -> None:
         num_template_points=config.num_template_points,
         dataset_size=config.train_dataset_size,
         use_normals_for_scene=config.use_normals_for_scene,
-        use_normals_for_template=config.use_normals_for_template
+        use_normals_for_template=config.use_normals_for_template,
     )
     train_dataloader = DataLoader(
         dataset=train_dataset,
@@ -156,7 +150,7 @@ def train_model(config: Dict) -> None:
         num_template_points=config.num_template_points,
         dataset_size=config.test_dataset_size,
         use_normals_for_scene=config.use_normals_for_scene,
-        use_normals_for_template=config.use_normals_for_template
+        use_normals_for_template=config.use_normals_for_template,
     )
     test_dataloader = DataLoader(
         dataset=test_dataset,
@@ -167,7 +161,8 @@ def train_model(config: Dict) -> None:
 
     scene_feat_extractor = FEATURE_EXTRACTORS[config.feat_extractor](
         pc_dim=train_dataset.scene_pc_dim,
-        **config.feat_extractor_args)
+        **config.feat_extractor_args
+    )
     template_feat_extractor = FEATURE_EXTRACTORS[config.feat_extractor](
         pc_dim=train_dataset.template_pc_dim,
         **config.feat_extractor_args
@@ -177,7 +172,7 @@ def train_model(config: Dict) -> None:
         scene_feat_dim=scene_feat_extractor.feat_dim,
         template_feat_dim=scene_feat_extractor.feat_dim,
         out_dim=config.aggr_feat_dim,
-        **config.aggregator_args
+        **config.aggregator_args,
     )
 
     pred_head = PREDICTORS[config.predictor](in_dim=feat_agg.out_dim, **config.predictor_args)
@@ -190,11 +185,7 @@ def train_model(config: Dict) -> None:
     )
 
     optimizer = optim.Adam(model.parameters(), lr=config.lr, weight_decay=1e-4)
-    scheduler = optim.lr_scheduler.StepLR(
-        optimizer=optimizer,
-        step_size=config.step_size,
-        gamma=config.gamma
-    )
+    scheduler = optim.lr_scheduler.StepLR(optimizer=optimizer, step_size=config.step_size, gamma=config.gamma)
     start_epoch = 0
     best_iou = -1
 
@@ -215,44 +206,42 @@ def train_model(config: Dict) -> None:
         wandb.log({"train/epoch": epoch, "train/lr": scheduler.get_last_lr()[0]}, commit=False)
 
         for iter, data in tqdm.tqdm(
-            iterable=enumerate(train_dataloader),
-            desc=f"Epoch {epoch:04d}/{config.epochs}",
-            total=len(train_dataloader)
+            iterable=enumerate(train_dataloader), desc=f"Epoch {epoch:04d}/{config.epochs}", total=len(train_dataloader)
         ):
             optimizer.zero_grad()
 
             data = {k: v.to(config.device) for k, v in data.items()}
 
             pred = model(
-                scene_pointcloud=data['scene'],
-                template_pointcloud=data['template'],
+                scene_pointcloud=data["scene"],
+                template_pointcloud=data["template"],
             )
 
-            loss = loss_fn(pred, data['class_labels'])
+            loss = loss_fn(pred, data["class_labels"])
 
             loss.backward()
             optimizer.step()
 
-            if ((iter + 1) % config.log_freq == 0):
+            if (iter + 1) % config.log_freq == 0:
                 tqdm.tqdm.write(f"Loss: {loss.detach().cpu().item():.6f}")
                 wandb.log({"train/loss": loss.detach().cpu().item()})
-        
-        scheduler.step() 
+
+        scheduler.step()
 
         best_epoch = False
-        if ((epoch + 1) % config.eval_freq == 0):
+        if (epoch + 1) % config.eval_freq == 0:
             metrics = evaluate_model(model, test_dataloader, config)
 
-            if (metrics["iou"] > best_iou):
+            if metrics["iou"] > best_iou:
                 best_iou = metrics["iou"]
                 best_epoch = True
 
             tqdm.tqdm.write(f"Epoch: {epoch + 1:04d} \t iou: {metrics['iou']:.4f} \t loss: {metrics['loss']:0.6f}")
 
             metrics = {f"test/{k}": v for k, v in metrics.items()}
-            wandb.log(metrics, commit=False)  
+            wandb.log(metrics, commit=False)
 
-        if ((epoch + 1) % config.save_freq == 0 or best_epoch):
+        if (epoch + 1) % config.save_freq == 0 or best_epoch:
             save_path = Path(config.save_path) / run_id / ("best_epoch" if best_epoch else "last_epoch")
             save_checkpoint(
                 model=model,
@@ -262,7 +251,7 @@ def train_model(config: Dict) -> None:
                 scheduler=scheduler,
                 epoch=epoch + 1
             )
-    
+
     wandb.finish()
 
 
