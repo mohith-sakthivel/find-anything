@@ -71,10 +71,9 @@ config.wandb = 'online'
 def evaluate_model(model: nn.Module, data_loader: DataLoader, config: Dict, generate_visuals: bool = True) -> Dict:
     model.eval()
 
-    true_labels = []
-    pred_labels = []
     loss = []
     first_pass = True
+    pred_list = []
 
     for data in tqdm.tqdm(iterable=data_loader, desc=f"Test", total=len(data_loader)):
 
@@ -87,25 +86,22 @@ def evaluate_model(model: nn.Module, data_loader: DataLoader, config: Dict, gene
         
         max_template = torch.amax(template_feature, -1, keepdim=True)
         pred = cosine_sim(scene_feature, max_template)
+        pred_list.append(pred)
 
-        pred_thresh = (pred > config.pred_threshold).to(torch.float32)
-        pred_labels.append(pred_thresh.cpu().numpy())
-        true_labels.append(data['class_labels'].cpu().numpy())
-
-        if first_pass and generate_visuals:
-            scene_viz, gt_viz, template_viz = get_pc_viz(data, pred_thresh)
-            first_pass = False
-            
-    pred_labels = np.concatenate(pred_labels, axis=0)
-    true_labels = np.concatenate(true_labels, axis=0)
-
-    metrics = {
-        "accuracy": accuracy_score(true_labels.reshape(-1), pred_labels.reshape(-1)),
-        "balanced_accuracy": balanced_accuracy_score(true_labels.reshape(-1), pred_labels.reshape(-1)),
-        "iou": compute_iou(pred_labels, true_labels)
-    }
-
-    return metrics
+    
+    pred_labels = []
+    true_labels = []
+    for i in np.linspace(0, 1, 101):
+        pred_labels.clear()
+        true_labels.clear()
+        for pred in pred_list:
+            pred_thresh = (pred > i).to(torch.float32)
+            pred_labels.append(pred_thresh.cpu().numpy())
+            true_labels.append(data['class_labels'].cpu().numpy())
+        pred_labels_out = np.concatenate(pred_labels, axis=0)
+        true_labels_out = np.concatenate(true_labels, axis=0)
+        print(f"Balanced accuracy at {i}:", balanced_accuracy_score(true_labels_out.reshape(-1), pred_labels_out.reshape(-1)))
+        print(f"IoU at {i}:", compute_iou(pred_labels_out, true_labels_out))
 
 
 def train_model(config: Dict) -> None:
