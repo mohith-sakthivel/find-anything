@@ -88,7 +88,9 @@ def evaluate_model(model: nn.Module, data_loader: DataLoader, config: Dict, gene
         pred = cosine_sim(scene_feature, max_template)
         pred_list.append(pred)
 
-    
+    best_acc = 0
+    best_iou = 0
+    best_thresh = 0
     pred_labels = []
     true_labels = []
     for i in np.linspace(0, 1, 101):
@@ -100,8 +102,16 @@ def evaluate_model(model: nn.Module, data_loader: DataLoader, config: Dict, gene
             true_labels.append(data['class_labels'].cpu().numpy())
         pred_labels_out = np.concatenate(pred_labels, axis=0)
         true_labels_out = np.concatenate(true_labels, axis=0)
-        print(f"Balanced accuracy at {i}:", balanced_accuracy_score(true_labels_out.reshape(-1), pred_labels_out.reshape(-1)))
-        print(f"IoU at {i}:", compute_iou(pred_labels_out, true_labels_out))
+        bal_acc = balanced_accuracy_score(true_labels_out.reshape(-1), pred_labels_out.reshape(-1))
+        iou = compute_iou(pred_labels_out, true_labels_out)
+        print(f"Balanced accuracy at {i}:", bal_acc)
+        print(f"IoU at {i}:", iou)
+        if iou > best_iou:
+            best_iou = iou
+            best_acc = bal_acc
+            best_thresh = i
+    print(f"Balanced accuracy at {i}:", bal_acc)
+    print(f"IoU at {i}:", iou)
 
 
 def train_model(config: Dict) -> None:
