@@ -80,18 +80,13 @@ def evaluate_model(model: nn.Module, data_loader: DataLoader, config: Dict, gene
 
         data = {k: v.to(config.device) for k, v in data.items()}
 
-        pred = model(
-            scene_pointcloud=data['scene'],
-            template_pointcloud=data['template'],
-        )
-        loss.append(
-            F.binary_cross_entropy_with_logits(
-                input=pred,
-                target=data['class_labels'], 
-                reduction='mean', 
-                pos_weight=torch.Tensor([config.pos_sample_weight]).to(config.device)
-            ).cpu()
-        )
+        cosine_sim = nn.CosineSimilarity()
+
+        scene_feature = model.scene_feat_extractor(data['scene'])
+        template_feature = model.template_feat_extractor(data['template'])
+        
+        max_template = torch.amax(template_feature, -1, keepdim=True)
+        pred = cosine_sim(scene_feature, max_template)
 
         pred_thresh = (pred > config.pred_threshold).to(torch.float32)
         pred_labels.append(pred_thresh.cpu().numpy())
@@ -105,16 +100,10 @@ def evaluate_model(model: nn.Module, data_loader: DataLoader, config: Dict, gene
     true_labels = np.concatenate(true_labels, axis=0)
 
     metrics = {
-        "loss": np.mean(loss),
         "accuracy": accuracy_score(true_labels.reshape(-1), pred_labels.reshape(-1)),
         "balanced_accuracy": balanced_accuracy_score(true_labels.reshape(-1), pred_labels.reshape(-1)),
         "iou": compute_iou(pred_labels, true_labels)
     }
-
-    if generate_visuals:
-        metrics["scene_point_cloud"] = scene_viz
-        metrics["gt_point_cloud"] = gt_viz
-        metrics["template point cloud"] = template_viz
 
     return metrics
 
