@@ -139,7 +139,10 @@ class FindAnythingDataset(Dataset):
                 grid[min_dim0:max_min0, min_dim1:max_dim1] = False
 
                 # Calculate actual 2D position
-                position = np.array([sampled_index[0] * 0.1 - side_dim / 2.0, sampled_index[1] * 0.1 - side_dim / 2.0, 0])
+                position = np.array(
+                    [sampled_index[0] * 0.1 - side_dim / 2.0, sampled_index[1] * 0.1 - side_dim / 2.0, 0],
+                    dtype=np.float32
+                )
                 positions.append(position)
         return positions
 
@@ -274,6 +277,7 @@ class FindAnythingDataset(Dataset):
         scene_class_labels = []
         scene_instance_labels = []
         scene_pt_colors = []
+        # scene_meshes = []    # For visualization
 
         for i in range(len(obj_classes)):
             for j in range(obj_counts[i]):
@@ -289,8 +293,17 @@ class FindAnythingDataset(Dataset):
 
                     transformed_pc = Pointclouds(points=transformed_points.unsqueeze(0), normals=transformed_normals.unsqueeze(0))
 
+                    # # For visualization
+                    # transformed_vertices = rotate.transform_points(obj_meshes[i].verts_packed())
+                    # transformed_mesh = Meshes(transformed_vertices[None], obj_meshes[i].faces_packed()[None])
+
                 else:
                     transformed_pc = obj_point_clouds[i]
+                    # # For visualization
+                    # transformed_mesh = Meshes(obj_meshes[i].verts_packed()[None], obj_meshes[i].faces_packed()[None])
+
+                
+                # scene_meshes.append(transformed_mesh)     # For visualization
 
                 points = np.asarray(transformed_pc.points_packed(), dtype=np.float32)
                 normals = np.asarray(transformed_pc.normals_packed(), dtype=np.float32)
@@ -319,7 +332,9 @@ class FindAnythingDataset(Dataset):
         random_positions = self.random_positions(half_side_with_offset, obj_point_clouds, obj_counts)
         for i in range(len(scene_points) - 1):
             scene_points[i] += random_positions[i]
-
+            # For visualization
+            # scene_meshes[i] = Meshes(scene_meshes[i].verts_packed()[None] + random_positions[i], scene_meshes[i].faces_packed()[None])
+        
         # Create sample data
         scene_points = np.concatenate(scene_points, axis=0)
         scene_normals = np.concatenate(scene_normals, axis=0)
