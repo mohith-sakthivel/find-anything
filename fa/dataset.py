@@ -110,10 +110,7 @@ class FindAnythingDataset(Dataset):
 
     def random_positions(self, side_dim, obj_point_clouds, obj_counts, discretization_factor=0.1):
         # Create a 0.1 discretized boolean 2D array with the same side as the side_dim initialized to 1's
-        grid = np.ones(
-            (int(side_dim / discretization_factor), int(side_dim / discretization_factor)),
-            dtype=bool
-        )
+        grid = np.ones((int(side_dim / discretization_factor), int(side_dim / discretization_factor)), dtype=bool)
 
         # Sample index positions from 1's and set the surrounding area (max possible size * 1.5) to 0's
         positions = []
@@ -140,8 +137,7 @@ class FindAnythingDataset(Dataset):
 
                 # Calculate actual 2D position
                 position = np.array(
-                    [sampled_index[0] * 0.1 - side_dim / 2.0, sampled_index[1] * 0.1 - side_dim / 2.0, 0],
-                    dtype=np.float32
+                    [sampled_index[0] * 0.1 - side_dim / 2.0, sampled_index[1] * 0.1 - side_dim / 2.0, 0], dtype=np.float32
                 )
                 positions.append(position)
         return positions
@@ -302,7 +298,6 @@ class FindAnythingDataset(Dataset):
                     # # For visualization
                     # transformed_mesh = Meshes(obj_meshes[i].verts_packed()[None], obj_meshes[i].faces_packed()[None])
 
-                
                 # scene_meshes.append(transformed_mesh)     # For visualization
 
                 points = np.asarray(transformed_pc.points_packed(), dtype=np.float32)
@@ -334,7 +329,7 @@ class FindAnythingDataset(Dataset):
             scene_points[i] += random_positions[i]
             # For visualization
             # scene_meshes[i] = Meshes(scene_meshes[i].verts_packed()[None] + random_positions[i], scene_meshes[i].faces_packed()[None])
-        
+
         # Create sample data
         scene_points = np.concatenate(scene_points, axis=0)
         scene_normals = np.concatenate(scene_normals, axis=0)

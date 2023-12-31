@@ -5,15 +5,15 @@ from fa.fusion import SimpleAggregator, DynamicConvolution
 from fa.predictor import DGCNNPredHead
 
 FEATURE_EXTRACTORS = {
-    'dgcnn': DGCNNSeg,
+    "dgcnn": DGCNNSeg,
 }
 
 AGGREGATORS = {
-    'simple': SimpleAggregator,
-    'dynamic_conv': DynamicConvolution
+    "simple": SimpleAggregator,
+    "dynamic_conv": DynamicConvolution,
 }
 
 PREDICTORS = {
-    'none': nn.Identity,
-    'dgcnn': DGCNNPredHead,
+    "none": nn.Identity,
+    "dgcnn": DGCNNPredHead,
 }

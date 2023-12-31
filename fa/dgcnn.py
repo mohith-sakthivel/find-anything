@@ -22,7 +22,7 @@ def get_graph_feature(
     x: torch.Tensor,
     k: int = 20,
     idx: Optional[torch.Tensor] = None,
-    ignore_geometry_data: bool = False
+    ignore_geometry_data: bool = False,
 ) -> torch.Tensor:
     batch_size = x.size(0)
     num_points = x.size(2)
